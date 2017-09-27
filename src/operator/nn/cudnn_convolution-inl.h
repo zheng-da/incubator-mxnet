@@ -22,8 +22,8 @@
  * \brief
  * \author Bing Xu
 */
-#ifndef MXNET_OPERATOR_CUDNN_CONVOLUTION_INL_H_
-#define MXNET_OPERATOR_CUDNN_CONVOLUTION_INL_H_
+#ifndef MXNET_OPERATOR_NN_CUDNN_CONVOLUTION_INL_H_
+#define MXNET_OPERATOR_NN_CUDNN_CONVOLUTION_INL_H_
 
 #include <algorithm>
 #include <vector>
