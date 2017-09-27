@@ -21,7 +21,7 @@
  * \file convolution-inl.h
  * \brief
  * \ref: https://github.com/Yangqing/caffe/wiki/Convolution-in-Caffe:-a-memo
- * \author Bing Xu, Jun Wu
+ * \author Bing Xu, Jun Wu, Da Zheng
 */
 #ifndef MXNET_OPERATOR_CONVOLUTION_INL_H_
 #define MXNET_OPERATOR_CONVOLUTION_INL_H_

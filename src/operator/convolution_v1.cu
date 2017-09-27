@@ -25,9 +25,6 @@
 
 #include "./convolution_v1-inl.h"
 #include <vector>
-#if MXNET_USE_CUDNN == 1
-#include "./cudnn_convolution-inl.h"
-#endif  // MXNET_USE_CUDNN
 
 namespace mxnet {
 namespace op {

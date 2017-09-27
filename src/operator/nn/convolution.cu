@@ -20,7 +20,7 @@
 /*!
  * \file convolution.cu
  * \brief
- * \author Bing Xu, Jun Wu
+ * \author Bing Xu, Jun Wu, Da Zheng
 */
 
 #include "./convolution-inl.h"
@@ -28,8 +28,6 @@
 #if MXNET_USE_CUDNN == 1
 #include "./cudnn_convolution-inl.h"
 #endif  // MXNET_USE_CUDNN
-
-#include "./depthwise_convolution-inl.h"
 
 namespace mxnet {
 namespace op {
@@ -45,10 +43,12 @@ static ConvolutionOp<gpu, DType> &get_op(const ConvolutionParam& param)
 
 template<typename DType>
 CuDNNConvolutionOp<DType> &get_cudnn_op(const ConvolutionParam& param,
-    int compute_type, int compute_type, const std::vector<TShape>& in_shape,
-    const std::vector<TShape>& out_shape, const Context& ctx) {
+    int forward_compute_type, int backward_compute_type,
+    const std::vector<TShape>& in_shape, const std::vector<TShape>& out_shape,
+    const Context& ctx) {
   static thread_local CuDNNConvolutionOp<DType> op;
-  op.Init(param, compute_type, compute_type, in_shape, out_shape, ctx);
+  op.Init(param, forward_compute_type, backward_compute_type,
+      in_shape, out_shape, ctx);
   return op;
 }
 
@@ -66,6 +66,7 @@ void ConvolutionCompute<gpu>(const nnvm::NodeAttrs& attrs,
       ConvolutionOp<gpu, DType> &op = get_op<DType>(param);
       op.Forward(ctx, inputs, req, outputs);
     })
+    return;
   }
   // TODO depth wise conv
 #if 0
@@ -88,13 +89,19 @@ void ConvolutionCompute<gpu>(const nnvm::NodeAttrs& attrs,
     if (param.cudnn_off) {
       ConvolutionOp<gpu, DType> &op = get_op<DType>(param);
       op.Forward(ctx, inputs, req, outputs);
-    } else if (!CuDNNConvolutionOp<DType>::Supports(param, compute_type, compute_type, ctx)) {
+    } else if (!CuDNNConvolutionOp<DType>::Supports(param,
+          compute_type, compute_type, ctx.run_ctx.ctx)) {
       LOG(WARNING) << "This convolution is not supported by cudnn, MXNET convolution is applied.";
       ConvolutionOp<gpu, DType> &op = get_op<DType>(param);
       op.Forward(ctx, inputs, req, outputs);
     } else {
-      CuDNNConvolutionOp<DType> &op = get_cudnn_op<DType>(param, compute_type, compute_type,
-          *in_shape, *out_shape, ctx);
+      // The first element stores out grad.
+      std::vector<TShape> in_shape(inputs.size());
+      std::vector<TShape> out_shape(1, outputs[0].shape_);
+      for (size_t i = 0; i < in_shape.size(); i++)
+        in_shape[i] = inputs[i].shape_;
+      CuDNNConvolutionOp<DType> &op = get_cudnn_op<DType>(param,
+          compute_type, compute_type, in_shape, out_shape, ctx.run_ctx.ctx);
       op.Forward(ctx, inputs, req, outputs);
     }
   })
@@ -121,8 +128,11 @@ void ConvolutionGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
   if (param.kernel.ndim() == 1) {
     MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
       ConvolutionOp<gpu, DType> &op = get_op<DType>(param);
+      // We only need in_data and weight
+      in_data.resize(2);
       op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
     })
+    return;
   }
   // TODO depth wise conv
 #if 0
@@ -144,20 +154,32 @@ void ConvolutionGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
   MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
     if (param.cudnn_off) {
       ConvolutionOp<gpu, DType> &op = get_op<DType>(param);
+      // We only need in_data and weight
+      in_data.resize(2);
       op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
-    } else if (!CuDNNConvolutionOp<DType>::Supports(param, compute_type, compute_type, ctx)) {
+    } else if (!CuDNNConvolutionOp<DType>::Supports(param,
+          compute_type, compute_type, ctx.run_ctx.ctx)) {
       LOG(WARNING) << "This convolution is not supported by cudnn, MXNET convolution is applied.";
       ConvolutionOp<gpu, DType> &op = get_op<DType>(param);
+      // We only need in_data and weight
+      in_data.resize(2);
       op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
     } else {
-      CuDNNConvolutionOp<DType> &op = get_cudnn_op<DType>(param, compute_type, compute_type,
-          *in_shape, *out_shape, ctx);
+      // The first element stores out grad.
+      std::vector<TShape> in_shape(inputs.size() - 1);
+      std::vector<TShape> out_shape(1, out_grad.shape_);
+      for (size_t i = 0; i < in_shape.size(); i++)
+        in_shape[i] = inputs[i + 1].shape_;
+      CuDNNConvolutionOp<DType> &op = get_cudnn_op<DType>(param,
+          compute_type, compute_type, in_shape, out_shape, ctx.run_ctx.ctx);
       op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
     }
   })
 #else
   MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
     ConvolutionOp<gpu, DType> &op = get_op<DType>(param);
+    // We only need in_data and weight
+    in_data.resize(2);
     op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
   })
 #endif  // MXNET_USE_CUDNN

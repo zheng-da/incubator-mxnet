@@ -20,7 +20,7 @@
 /*!
  * \file convolution.cc
  * \brief
- * \author Bing Xu, Jun Wu
+ * \author Bing Xu, Jun Wu, Da Zheng
 */
 
 #include "./convolution-inl.h"
