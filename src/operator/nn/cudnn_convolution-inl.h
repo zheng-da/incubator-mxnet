@@ -30,8 +30,8 @@
 #include <mutex>
 #include <string>
 #include "./convolution-inl.h"
-#include "./cudnn_algoreg-inl.h"
-#include "../common/cuda_utils.h"
+#include "../cudnn_algoreg-inl.h"
+#include "../../common/cuda_utils.h"
 
 namespace mxnet {
 namespace op {
@@ -41,9 +41,9 @@ namespace op {
  * \brief The Operator used to perform convolution using cuDNN kernels.
  */
 template<typename DType>
-class CuDNNConvolutionOp : public Operator {
+class CuDNNConvolutionOp {
  public:
-  explicit CuDNNConvolutionOp(const ConvolutionParam& param,
+  void Init(const ConvolutionParam& param,
                               int forward_compute_type,
                               int backward_compute_type,
                               const std::vector<TShape>& in_shape,
