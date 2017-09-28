@@ -29,7 +29,7 @@
 #include <map>
 #include <string>
 #include <utility>
-#include "batch_norm-inl.h"
+#include "./nn/batch_norm-inl.h"
 
 namespace mxnet {
 namespace op {
