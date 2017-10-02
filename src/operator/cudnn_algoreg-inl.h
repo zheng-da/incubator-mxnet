@@ -31,7 +31,7 @@
 #include <vector>
 #include "../common/cuda_utils.h"
 #include "./nn/convolution-inl.h"
-#include "./deconvolution-inl.h"
+#include "./nn/deconvolution-inl.h"
 namespace mxnet {
 namespace op {
 #if MXNET_USE_CUDNN == 1
