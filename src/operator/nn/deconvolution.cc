@@ -85,9 +85,11 @@ static bool DeconvolutionShape(const nnvm::NodeAttrs& attrs,
     oshape[2] = param_.stride[0] * (dshape_ncw[2] - 1) +
       dilated_ksize_x - 2 * o_pad[0] + o_adj[0];
 
-    if (param_.target_shape[0] > 0) {
-      CHECK_EQ(param_.target_shape[0], oshape[2]) \
-        << "param_.target_shape[0] was not reasonable, please set it carefully";
+    if (param_.target_shape.ndim() > 0) {
+      if (param_.target_shape[0] > 0) {
+        CHECK_EQ(param_.target_shape[0], oshape[2]) \
+          << "param_.target_shape[0] was not reasonable, please set it carefully";
+      }
     }
 
     SHAPE_ASSIGN_CHECK(*out_shape, 0, ConvertLayout(oshape, kNCW, param_.layout.value()));
@@ -136,13 +138,15 @@ static bool DeconvolutionShape(const nnvm::NodeAttrs& attrs,
     oshape[3] = param_.stride[1] * (dshape_nchw[3] - 1) +
       dilated_ksize_x - 2 * o_pad[1] + o_adj[1];
 
-    if (param_.target_shape[0] > 0) {
-      CHECK_EQ(param_.target_shape[0], oshape[2]) \
-        << "param_.target_shape[0] was not reasonable, please set it carefully";
-    }
-    if (param_.target_shape[1] > 0) {
-      CHECK_EQ(param_.target_shape[1], oshape[3]) \
-        << "param_.target_shape[1] was not reasonable, please set it carefully";
+    if (param_.target_shape.ndim() > 1) {
+      if (param_.target_shape[0] > 0) {
+        CHECK_EQ(param_.target_shape[0], oshape[2]) \
+          << "param_.target_shape[0] was not reasonable, please set it carefully";
+      }
+      if (param_.target_shape[1] > 0) {
+        CHECK_EQ(param_.target_shape[1], oshape[3]) \
+          << "param_.target_shape[1] was not reasonable, please set it carefully";
+      }
     }
 
     SHAPE_ASSIGN_CHECK(*out_shape, 0, ConvertLayout(oshape, kNCHW, param_.layout.value()));
@@ -198,17 +202,19 @@ static bool DeconvolutionShape(const nnvm::NodeAttrs& attrs,
     oshape[4] = param_.stride[2] * (dshape_ncdhw[4] - 1) +
       dilated_ksize_x - 2 * o_pad[2] + o_adj[2];
 
-    if (param_.target_shape[0] > 0) {
-      CHECK_EQ(param_.target_shape[0], oshape[2]) \
-        << "param_.target_shape[0] was not reasonable, please it carefully";
-    }
-    if (param_.target_shape[1] > 0) {
-      CHECK_EQ(param_.target_shape[1], oshape[3]) \
-        << "param_.target_shape[1] was not reasonable, please set it carefully";
-    }
-    if (param_.target_shape[2] > 0) {
-      CHECK_EQ(param_.target_shape[2], oshape[4]) \
-        << "param_.target_shape[2] was not reasonable, please set it carefully";
+    if (param_.target_shape.ndim() > 2) {
+      if (param_.target_shape[0] > 0) {
+        CHECK_EQ(param_.target_shape[0], oshape[2]) \
+          << "param_.target_shape[0] was not reasonable, please it carefully";
+      }
+      if (param_.target_shape[1] > 0) {
+        CHECK_EQ(param_.target_shape[1], oshape[3]) \
+          << "param_.target_shape[1] was not reasonable, please set it carefully";
+      }
+      if (param_.target_shape[2] > 0) {
+        CHECK_EQ(param_.target_shape[2], oshape[4]) \
+          << "param_.target_shape[2] was not reasonable, please set it carefully";
+      }
     }
 
     SHAPE_ASSIGN_CHECK(*out_shape, 0, ConvertLayout(oshape, kNCDHW, param_.layout.value()));
