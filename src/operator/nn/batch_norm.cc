@@ -458,6 +458,9 @@ then set ``gamma`` to 1 and its gradient to 0.
   const BatchNormParam& param = nnvm::get<BatchNormParam>(attrs.parsed);
   return param.output_mean_var ? 3 : 1;
 })
+.set_attr<nnvm::FMutateInputs>("FMutateInputs", [](const nnvm::NodeAttrs& attrs) {
+  return std::vector<uint32_t>{3, 4};
+})
 .set_attr<nnvm::FInferShape>("FInferShape", BatchNormShape)
 .set_attr<nnvm::FInferType>("FInferType", BatchNormType)
 .set_attr<FCompute>("FCompute<cpu>", BatchNormCompute<cpu>)
@@ -481,6 +484,9 @@ then set ``gamma`` to 1 and its gradient to 0.
 
 NNVM_REGISTER_OP(_backward_BatchNorm)
 .set_num_outputs(5)
+.set_attr<nnvm::FMutateInputs>("FMutateInputs", [](const nnvm::NodeAttrs& attrs) {
+  return std::vector<uint32_t>{6, 7};
+})
 .set_attr<nnvm::TIsBackward>("TIsBackward", true)
 .set_attr_parser(ParamParser<BatchNormParam>)
 .set_attr<FCompute>("FCompute<cpu>", BatchNormGradCompute<cpu>);
