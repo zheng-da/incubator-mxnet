@@ -186,11 +186,11 @@ void FullyConnectedCompute(const nnvm::NodeAttrs& attrs,
 
   switch (dtype) {
   case mshadow::kFloat32:
-    FullyConnectedOp<cpu, float>::get_op(param).Forward(ctx, inputs,
+    FullyConnectedOp<xpu, float>::get_op(param).Forward(ctx, inputs,
         req, outputs);
     break;
   case mshadow::kFloat64:
-    FullyConnectedOp<cpu, double>::get_op(param).Forward(ctx, inputs,
+    FullyConnectedOp<xpu, double>::get_op(param).Forward(ctx, inputs,
         req, outputs);
     break;
   case mshadow::kFloat16:
@@ -220,11 +220,11 @@ void FullyConnectedGradCompute(const nnvm::NodeAttrs& attrs,
 
   switch (dtype) {
   case mshadow::kFloat32:
-    FullyConnectedOp<cpu, float>::get_op(param).Backward(ctx, out_grad, in_data,
+    FullyConnectedOp<xpu, float>::get_op(param).Backward(ctx, out_grad, in_data,
         req, outputs);
     break;
   case mshadow::kFloat64:
-    FullyConnectedOp<cpu, double>::get_op(param).Backward(ctx, out_grad, in_data,
+    FullyConnectedOp<xpu, double>::get_op(param).Backward(ctx, out_grad, in_data,
         req, outputs);
     break;
   case mshadow::kFloat16:

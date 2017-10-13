@@ -27,14 +27,13 @@
 
 namespace mxnet {
 namespace op {
-template<>
-Operator *CreateOp<gpu>(DropoutParam param, int dtype) {
-  Operator *op = NULL;
-  MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
-    op = new DropoutOp<gpu, DType>(param);
-  });
-  return op;
-}
+
+NNVM_REGISTER_OP(Dropout)
+.set_attr<FCompute>("FCompute<gpu>", DropoutCompute<gpu>);
+
+NNVM_REGISTER_OP(_backward_Dropout)
+.set_attr<FCompute>("FCompute<gpu>", DropoutGradCompute<gpu>);
+
 }  // namespace op
 }  // namespace mxnet
 

@@ -33,13 +33,19 @@ namespace mxnet {
 namespace op {
 
 template<typename DType>
-class CuDNNPoolingOp : public Operator {
+class CuDNNPoolingOp {
  public:
-  explicit CuDNNPoolingOp(PoolingParam p) {
-    param_ = p;
+  explicit CuDNNPoolingOp() {
     init_cudnn_ = false;
     // TODO(xxx): fp16
     dtype_ = mshadow::DataType<DType>::kCudnnFlag;
+    CUDNN_CALL(cudnnCreatePoolingDescriptor(&pooling_desc_));
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc_));
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
+  }
+
+  void Init(const PoolingParam &p) {
+    param_ = p;
     switch (param_.pool_type) {
       case pool_enum::kMaxPooling:
         mode_ = CUDNN_POOLING_MAX;
@@ -53,30 +59,23 @@ class CuDNNPoolingOp : public Operator {
   }
 
   ~CuDNNPoolingOp() {
-    if (init_cudnn_) {
-      CUDNN_CALL(cudnnDestroyTensorDescriptor(in_desc_));
-      CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc_));
-      CUDNN_CALL(cudnnDestroyPoolingDescriptor(pooling_desc_));
-    }
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(in_desc_));
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc_));
+    CUDNN_CALL(cudnnDestroyPoolingDescriptor(pooling_desc_));
   }
 
-  virtual void Forward(const OpContext &ctx,
-                       const std::vector<TBlob> &in_data,
-                       const std::vector<OpReqType> &req,
-                       const std::vector<TBlob> &out_data,
-                       const std::vector<TBlob> &aux_args) {
+  void Forward(const OpContext &ctx, const TBlob &in_data,
+      const OpReqType &req, const TBlob &out_data) {
     using namespace mshadow;
     using namespace mshadow::expr;
-    CHECK_EQ(in_data.size(), 1U);
-    CHECK_EQ(out_data.size(), 1U);
     Stream<gpu> *s = ctx.get_stream<gpu>();
     CHECK_EQ(s->dnn_handle_ownership_, mshadow::Stream<gpu>::OwnHandle);
     typename DataType<DType>::ScaleType alpha = 1.0f;
     typename DataType<DType>::ScaleType beta = 0.0f;
     if (param_.kernel.ndim() == 2) {
       // 2d pool
-      Tensor<gpu, 4, DType> data = in_data[pool_enum::kData].get<gpu, 4, DType>(s);
-      Tensor<gpu, 4, DType> out = out_data[pool_enum::kOut].get<gpu, 4, DType>(s);
+      Tensor<gpu, 4, DType> data = in_data.get<gpu, 4, DType>(s);
+      Tensor<gpu, 4, DType> out = out_data.get<gpu, 4, DType>(s);
       if (!init_cudnn_) {
         this->Init(s, in_data, out_data);
       }
@@ -92,8 +91,8 @@ class CuDNNPoolingOp : public Operator {
                                      out.dptr_));
     } else if (param_.kernel.ndim() == 3) {
       // 3d pool
-      Tensor<gpu, 5, DType> data = in_data[pool_enum::kData].get<gpu, 5, DType>(s);
-      Tensor<gpu, 5, DType> out = out_data[pool_enum::kOut].get<gpu, 5, DType>(s);
+      Tensor<gpu, 5, DType> data = in_data.get<gpu, 5, DType>(s);
+      Tensor<gpu, 5, DType> out = out_data.get<gpu, 5, DType>(s);
       if (!init_cudnn_) {
         this->Init(s, in_data, out_data);
       }
@@ -112,20 +111,11 @@ class CuDNNPoolingOp : public Operator {
     }
   }
 
-  virtual void Backward(const OpContext &ctx,
-                        const std::vector<TBlob> &out_grad,
-                        const std::vector<TBlob> &in_data,
-                        const std::vector<TBlob> &out_data,
-                        const std::vector<OpReqType> &req,
-                        const std::vector<TBlob> &in_grad,
-                        const std::vector<TBlob> &aux_args) {
+  void Backward(const OpContext &ctx, const TBlob &out_grad,
+      const TBlob &in_data, const TBlob &out_data,
+      const OpReqType &req, const TBlob &in_grad) {
     using namespace mshadow;
     using namespace mshadow::expr;
-    CHECK_EQ(out_grad.size(), 1U);
-    CHECK_EQ(in_data.size(), 1U);
-    CHECK_EQ(out_data.size(), 1U);
-    CHECK_EQ(req.size(), 1U);
-    CHECK_EQ(in_grad.size(), 1U);
 
     Stream<gpu> *s = ctx.get_stream<gpu>();
     CHECK_EQ(s->dnn_handle_ownership_, mshadow::Stream<gpu>::OwnHandle);
@@ -133,10 +123,10 @@ class CuDNNPoolingOp : public Operator {
     typename DataType<DType>::ScaleType beta = 0.0f;
     if (param_.kernel.ndim() == 2) {
       // 2d pool
-      Tensor<gpu, 4, DType> m_out_grad = out_grad[pool_enum::kOut].get<gpu, 4, DType>(s);
-      Tensor<gpu, 4, DType> m_in_data = in_data[pool_enum::kData].get<gpu, 4, DType>(s);
-      Tensor<gpu, 4, DType> m_out_data = out_data[pool_enum::kOut].get<gpu, 4, DType>(s);
-      Tensor<gpu, 4, DType> m_in_grad = in_grad[pool_enum::kData].get<gpu, 4, DType>(s);
+      Tensor<gpu, 4, DType> m_out_grad = out_grad.get<gpu, 4, DType>(s);
+      Tensor<gpu, 4, DType> m_in_data = in_data.get<gpu, 4, DType>(s);
+      Tensor<gpu, 4, DType> m_out_data = out_data.get<gpu, 4, DType>(s);
+      Tensor<gpu, 4, DType> m_in_grad = in_grad.get<gpu, 4, DType>(s);
       CUDNN_CALL(cudnnPoolingBackward(s->dnn_handle_,
                                       pooling_desc_,
                                       &alpha,
@@ -151,10 +141,10 @@ class CuDNNPoolingOp : public Operator {
                                       m_in_grad.dptr_));
     } else if (param_.kernel.ndim() == 3) {
       // 3d pool
-      Tensor<gpu, 5, DType> m_out_grad = out_grad[pool_enum::kOut].get<gpu, 5, DType>(s);
-      Tensor<gpu, 5, DType> m_in_data = in_data[pool_enum::kData].get<gpu, 5, DType>(s);
-      Tensor<gpu, 5, DType> m_out_data = out_data[pool_enum::kOut].get<gpu, 5, DType>(s);
-      Tensor<gpu, 5, DType> m_in_grad = in_grad[pool_enum::kData].get<gpu, 5, DType>(s);
+      Tensor<gpu, 5, DType> m_out_grad = out_grad.get<gpu, 5, DType>(s);
+      Tensor<gpu, 5, DType> m_in_data = in_data.get<gpu, 5, DType>(s);
+      Tensor<gpu, 5, DType> m_out_data = out_data.get<gpu, 5, DType>(s);
+      Tensor<gpu, 5, DType> m_in_grad = in_grad.get<gpu, 5, DType>(s);
       CUDNN_CALL(cudnnPoolingBackward(s->dnn_handle_,
                                       pooling_desc_,
                                       &alpha,
@@ -173,25 +163,21 @@ class CuDNNPoolingOp : public Operator {
   }
 
  private:
-  inline void Init(mshadow::Stream<gpu> *s,
-                   const std::vector<TBlob> &in_data,
-                   const std::vector<TBlob> &out_data) {
+  inline void Init(mshadow::Stream<gpu> *s, const TBlob &in_data,
+      const TBlob &out_data) {
     using namespace mshadow;
     #if CUDNN_MAJOR >= 5
     nan_prop_ = CUDNN_NOT_PROPAGATE_NAN;
     #endif
-    CHECK_EQ(in_data.size(), 1U);
-    CHECK_EQ(out_data.size(), 1U);
-    if (!init_cudnn_) {
-      init_cudnn_ = true;
+    // If the input or the output doesn't have the same shape, we should
+    // reset CuDNN.
+    if (!same_shapes(in_data, out_data)) {
+      save_shapes(in_data, out_data);
       if (param_.kernel.ndim() == 2) {
         // 2d conv
-        Tensor<gpu, 4, DType> data = in_data[pool_enum::kData].get<gpu, 4, DType>(s);
-        Tensor<gpu, 4, DType> out = out_data[pool_enum::kOut].get<gpu, 4, DType>(s);
+        Tensor<gpu, 4, DType> data = in_data.get<gpu, 4, DType>(s);
+        Tensor<gpu, 4, DType> out = out_data.get<gpu, 4, DType>(s);
         mshadow::Shape<4> dshape = data.shape_;
-        CUDNN_CALL(cudnnCreatePoolingDescriptor(&pooling_desc_));
-        CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc_));
-        CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
         CUDNN_CALL(cudnnSetTensor4dDescriptor(in_desc_,
                                               CUDNN_TENSOR_NCHW,
                                               dtype_,
@@ -227,11 +213,8 @@ class CuDNNPoolingOp : public Operator {
                                                param_.global_pool ? 1 : param_.stride[1]));
         #endif
       } else {
-        Tensor<gpu, 5, DType> data = in_data[pool_enum::kData].get<gpu, 5, DType>(s);
-        Tensor<gpu, 5, DType> out = out_data[pool_enum::kOut].get<gpu, 5, DType>(s);
-        CUDNN_CALL(cudnnCreatePoolingDescriptor(&pooling_desc_));
-        CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc_));
-        CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
+        Tensor<gpu, 5, DType> data = in_data.get<gpu, 5, DType>(s);
+        Tensor<gpu, 5, DType> out = out_data.get<gpu, 5, DType>(s);
         std::vector<int> ishape = {static_cast<int>(data.shape_[0]),
                                    static_cast<int>(data.shape_[1]),
                                    static_cast<int>(data.shape_[2]),
@@ -295,6 +278,21 @@ class CuDNNPoolingOp : public Operator {
       }
     }
   }
+
+  bool same_shapes(const TBlob &in_data, const TBlob &out_data) const {
+    return in_shape == in_data.shape_ && out_shape == out_data.shape_;
+  }
+
+  void save_shapes(const TBlob &in_data, const TBlob &out_data) {
+    in_shape = in_data.shape_;
+    out_shape = out_data.shape_;
+  }
+
+  // We need to record the shape of the input and output data so that we know
+  // when to reinitialize.
+  TShape in_shape;
+  TShape out_shape;
+
   bool init_cudnn_;
   cudnnDataType_t dtype_;
   cudnnHandle_t handle_;

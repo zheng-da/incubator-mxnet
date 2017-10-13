@@ -122,6 +122,13 @@ class PoolingOp {
   PoolingParam param_;
 };  // class PoolingOp
 
+template<typename xpu, typename DType>
+PoolingOp<xpu, DType> &GetPoolingOp(const PoolingParam &param) {
+  static thread_local PoolingOp<xpu, DType> op;
+  op.Init(param);
+  return op;
+}
+
 template<typename xpu>
 void PoolingCompute(const nnvm::NodeAttrs& attrs,
     const OpContext& ctx,
@@ -135,9 +142,7 @@ void PoolingCompute(const nnvm::NodeAttrs& attrs,
     if (pool_enum::kMaxPooling == param.pool_type
         || pool_enum::kAvgPooling == param.pool_type
         || pool_enum::kSumPooling == param.pool_type) {
-      static thread_local PoolingOp<xpu, DType> op;
-      op.Init(param);
-      op.Forward(ctx, inputs[0], req[0], outputs[0]);
+      GetPoolingOp<xpu, DType>(param).Forward(ctx, inputs[0], req[0], outputs[0]);
     } else {
       LOG(FATAL) << "unknown pooling type";
     }
@@ -158,9 +163,8 @@ void PoolingGradCompute(const nnvm::NodeAttrs& attrs,
     if (pool_enum::kMaxPooling == param.pool_type
         || pool_enum::kAvgPooling == param.pool_type
         || pool_enum::kSumPooling == param.pool_type) {
-      static thread_local PoolingOp<xpu, DType> op;
-      op.Init(param);
-      op.Backward(ctx, inputs[0], inputs[1], inputs[2], req[0], outputs[0]);
+      GetPoolingOp<xpu, DType>(param).Backward(ctx,
+          inputs[0], inputs[1], inputs[2], req[0], outputs[0]);
     } else {
       LOG(FATAL) << "unknown pooling type";
     }

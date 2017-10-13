@@ -123,7 +123,7 @@ NNVM_REGISTER_OP(UpSampling)
 .describe("Performs nearest neighbor/bilinear up sampling to inputs.")
 .set_num_inputs([](const NodeAttrs& attrs) {
   const UpSamplingParam& params = nnvm::get<UpSamplingParam>(attrs.parsed);
-  return params.num_args;
+  return params.sample_type == up_enum::kNearest ? params.num_args : 2;
 })
 .set_num_outputs(1)
 .set_attr_parser(ParamParser<UpSamplingParam>)
@@ -157,7 +157,7 @@ NNVM_REGISTER_OP(UpSampling)
 NNVM_REGISTER_OP(_backward_UpSampling)
 .set_num_outputs([](const NodeAttrs& attrs) {
   const UpSamplingParam& params = nnvm::get<UpSamplingParam>(attrs.parsed);
-  return params.num_args;
+  return params.sample_type == up_enum::kNearest ? params.num_args : 2;
 })
 .set_attr<nnvm::TIsBackward>("TIsBackward", true)
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {

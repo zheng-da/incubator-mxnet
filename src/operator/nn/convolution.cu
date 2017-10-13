@@ -42,11 +42,15 @@ static ConvolutionOp<gpu, DType> &get_op(const ConvolutionParam& param)
 }
 
 template<typename DType>
-CuDNNConvolutionOp<DType> &get_cudnn_op(const ConvolutionParam& param,
+static CuDNNConvolutionOp<DType> &get_cudnn_op(const ConvolutionParam& param,
     int forward_compute_type, int backward_compute_type,
     const std::vector<TShape>& in_shape, const std::vector<TShape>& out_shape,
-    const Context& ctx) {
-  static thread_local CuDNNConvolutionOp<DType> op;
+    const Context& ctx, bool backward) {
+  // Convolution forward has to be called before backward for this operator.
+  // So we can't make this operator thread local. backward might be called
+  // in another thread.
+  static CuDNNConvolutionOp<DType> op;
+  if (!backward)
   op.Init(param, forward_compute_type, backward_compute_type,
       in_shape, out_shape, ctx);
   return op;
@@ -101,7 +105,7 @@ void ConvolutionCompute<gpu>(const nnvm::NodeAttrs& attrs,
       for (size_t i = 0; i < in_shape.size(); i++)
         in_shape[i] = inputs[i].shape_;
       CuDNNConvolutionOp<DType> &op = get_cudnn_op<DType>(param,
-          compute_type, compute_type, in_shape, out_shape, ctx.run_ctx.ctx);
+          compute_type, compute_type, in_shape, out_shape, ctx.run_ctx.ctx, false);
       op.Forward(ctx, inputs, req, outputs);
     }
   })
@@ -166,12 +170,12 @@ void ConvolutionGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
       op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
     } else {
       // The first element stores out grad.
-      std::vector<TShape> in_shape(inputs.size() - 1);
+      std::vector<TShape> in_shape(in_data.size());
       std::vector<TShape> out_shape(1, out_grad.shape_);
       for (size_t i = 0; i < in_shape.size(); i++)
-        in_shape[i] = inputs[i + 1].shape_;
+        in_shape[i] = in_data[i].shape_;
       CuDNNConvolutionOp<DType> &op = get_cudnn_op<DType>(param,
-          compute_type, compute_type, in_shape, out_shape, ctx.run_ctx.ctx);
+          compute_type, compute_type, in_shape, out_shape, ctx.run_ctx.ctx, true);
       op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
     }
   })

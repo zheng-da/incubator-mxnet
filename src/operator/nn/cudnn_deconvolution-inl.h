@@ -30,17 +30,28 @@
 #include <mutex>
 #include <string>
 #include "./deconvolution-inl.h"
-#include "./cudnn_algoreg-inl.h"
-#include "../common/cuda_utils.h"
+#include "../cudnn_algoreg-inl.h"
+#include "../../common/cuda_utils.h"
 
 namespace mxnet {
 namespace op {
 #if MXNET_USE_CUDNN == 1
 
 template<typename DType>
-class CuDNNDeconvolutionOp : public Operator {
+class CuDNNDeconvolutionOp {
  public:
-  explicit CuDNNDeconvolutionOp(DeconvolutionParam param,
+  CuDNNDeconvolutionOp() {
+    init_cudnn_ = false;
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc_));
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&bias_desc_));
+    CUDNN_CALL(cudnnCreateFilterDescriptor(&filter_desc_));
+    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&forward_conv_desc_));
+    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&back_conv_desc_));
+    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&back_conv_desc_w_));
+  }
+
+  void Init(DeconvolutionParam param,
                                 int forward_compute_type,
                                 int backward_compute_type,
                                 const std::vector<TShape>& in_shape,
@@ -88,22 +99,19 @@ class CuDNNDeconvolutionOp : public Operator {
   }
 
   ~CuDNNDeconvolutionOp() {
-    if (init_cudnn_) {
-      CUDNN_CALL(cudnnDestroyTensorDescriptor(in_desc_));
-      CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc_));
-      CUDNN_CALL(cudnnDestroyTensorDescriptor(bias_desc_));
-      CUDNN_CALL(cudnnDestroyFilterDescriptor(filter_desc_));
-      CUDNN_CALL(cudnnDestroyConvolutionDescriptor(forward_conv_desc_));
-      CUDNN_CALL(cudnnDestroyConvolutionDescriptor(back_conv_desc_));
-      CUDNN_CALL(cudnnDestroyConvolutionDescriptor(back_conv_desc_w_));
-    }
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(in_desc_));
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc_));
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(bias_desc_));
+    CUDNN_CALL(cudnnDestroyFilterDescriptor(filter_desc_));
+    CUDNN_CALL(cudnnDestroyConvolutionDescriptor(forward_conv_desc_));
+    CUDNN_CALL(cudnnDestroyConvolutionDescriptor(back_conv_desc_));
+    CUDNN_CALL(cudnnDestroyConvolutionDescriptor(back_conv_desc_w_));
   }
 
-  virtual void Forward(const OpContext &ctx,
+  void Forward(const OpContext &ctx,
                        const std::vector<TBlob> &in_data,
                        const std::vector<OpReqType> &req,
-                       const std::vector<TBlob> &out_data,
-                       const std::vector<TBlob> &aux_args) {
+                       const std::vector<TBlob> &out_data) {
     using namespace mshadow;
     size_t expected = param_.no_bias ? 2 : 3;
     DType *data_ptr = NULL;
@@ -196,13 +204,11 @@ class CuDNNDeconvolutionOp : public Operator {
     }
   }
 
-  virtual void Backward(const OpContext &ctx,
+  void Backward(const OpContext &ctx,
                         const std::vector<TBlob> &out_grad,
                         const std::vector<TBlob> &in_data,
-                        const std::vector<TBlob> &out_data,
                         const std::vector<OpReqType> &req,
-                        const std::vector<TBlob> &in_grad,
-                        const std::vector<TBlob> &aux_args) {
+                        const std::vector<TBlob> &in_grad) {
     using namespace mshadow;
     using namespace mshadow::expr;
     size_t expected = param_.no_bias == 0 ? 3 : 2;
@@ -212,7 +218,8 @@ class CuDNNDeconvolutionOp : public Operator {
     DType *data_ptr = NULL;
     DType *gdata_ptr = NULL;
     CHECK_EQ(out_grad.size(), 1U);
-    CHECK(in_data.size() == expected && in_grad.size() == expected);
+    CHECK_EQ(in_data.size(), 2U);
+    CHECK_EQ(in_grad.size(), expected);
     Stream<gpu> *s = ctx.get_stream<gpu>();
     if (param_.kernel.ndim() == 2) {
       Tensor<gpu, 4, DType> grad = out_grad[deconv::kOut].get<gpu, 4, DType>(s);
@@ -379,13 +386,6 @@ class CuDNNDeconvolutionOp : public Operator {
     size_t expected = param_.no_bias ? 2 : 3;
     CHECK_EQ(in_shape.size(), expected);
     CHECK_EQ(out_shape.size(), 1U);
-    CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc_));
-    CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
-    CUDNN_CALL(cudnnCreateTensorDescriptor(&bias_desc_));
-    CUDNN_CALL(cudnnCreateFilterDescriptor(&filter_desc_));
-    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&forward_conv_desc_));
-    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&back_conv_desc_));
-    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&back_conv_desc_w_));
 
     TShape dshape = in_shape[deconv::kData];
     TShape wshape = in_shape[deconv::kWeight];
@@ -902,6 +902,11 @@ class CuDNNDeconvolutionOp : public Operator {
 
   std::vector<int> param_stride_;
   std::vector<int> param_dilate_;
+
+  int forward_compute_type_;
+  int backward_compute_type_;
+  const std::vector<TShape> in_shapes_;
+  const std::vector<TShape> out_shapes_;
 
   bool init_cudnn_;
   bool init_temp_size_;

@@ -211,6 +211,14 @@ class BatchNormOp {
   BatchNormParam param_;
 };  // class BatchNormOp
 
+template<typename xpu, typename DType, typename AccReal>
+static BatchNormOp<xpu, DType, AccReal> &GetBatchNormOp(const BatchNormParam& param)
+{
+  static thread_local BatchNormOp<xpu, DType, AccReal> op;
+  op.Init(param);
+  return op;
+}
+
 template<typename xpu>
 void BatchNormCompute(const nnvm::NodeAttrs& attrs,
     const OpContext& ctx, const std::vector<TBlob>& inputs,
@@ -221,9 +229,8 @@ void BatchNormCompute(const nnvm::NodeAttrs& attrs,
   std::vector<TBlob> in_data(inputs.begin(), inputs.begin() + 3);
   std::vector<TBlob> aux_states(inputs.begin() + 3, inputs.end());
   MSHADOW_REAL_TYPE_SWITCH_EX(inputs[0].type_flag_, DType, AccReal, {
-    static thread_local BatchNormOp<xpu, DType, AccReal> op;
-    op.Init(param);
-    op.Forward(ctx, in_data, req, outputs, aux_states);
+    GetBatchNormOp<xpu, DType, AccReal>(param).Forward(ctx, in_data,
+        req, outputs, aux_states);
   });
 }
 
@@ -242,9 +249,8 @@ void BatchNormGradCompute(const nnvm::NodeAttrs& attrs,
   std::vector<TBlob> in_grad(outputs.begin(), outputs.begin() + 3);
 
   MSHADOW_REAL_TYPE_SWITCH_EX(out_grad[0].type_flag_, DType, AccReal, {
-    static thread_local BatchNormOp<xpu, DType, AccReal> op;
-    op.Init(param);
-    op.Backward(ctx, out_grad, in_data, out_data, req, in_grad, aux_states);
+    GetBatchNormOp<xpu, DType, AccReal>(param).Backward(ctx, out_grad,
+        in_data, out_data, req, in_grad, aux_states);
   });
 }
 

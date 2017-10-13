@@ -159,7 +159,7 @@ class ConvolutionOp {
       << "Only support NCW, NCHW and NCDHW layout";
   }
 
-  virtual void Forward(const OpContext &ctx,
+  void Forward(const OpContext &ctx,
                        const std::vector<TBlob> &in_data,
                        const std::vector<OpReqType> &req,
                        const std::vector<TBlob> &out_data) {
@@ -231,7 +231,7 @@ class ConvolutionOp {
     }
   }
 
-  virtual void Backward(const OpContext &ctx,
+  void Backward(const OpContext &ctx,
                         const std::vector<TBlob>& out_grad,
                         const std::vector<TBlob>& in_data,
                         const std::vector<OpReqType>& req,
@@ -241,10 +241,10 @@ class ConvolutionOp {
     CHECK_EQ(out_grad.size(), 1U);
     // We expect 2 inputs: in data and weight. We don't need bias for
     // computing gradient.
-    CHECK_EQ(in_data.size(), 2);
-    size_t out_expected = param_.no_bias == 0 ? 3 : 2;
-    CHECK_EQ(in_grad.size(), out_expected);
-    CHECK_EQ(req.size(), out_expected);
+    size_t expected = param_.no_bias == 0 ? 3 : 2;
+    CHECK_EQ(in_data.size(), expected);
+    CHECK_EQ(in_grad.size(), expected);
+    CHECK_EQ(req.size(), expected);
     CHECK_EQ(in_data[conv::kWeight].CheckContiguous(), true);
     LayerSetUp(in_grad[conv::kData].shape_, out_grad[conv::kOut].shape_);
     Stream<xpu> *s = ctx.get_stream<xpu>();

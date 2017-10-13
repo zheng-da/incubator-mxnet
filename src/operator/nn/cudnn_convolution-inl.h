@@ -43,6 +43,17 @@ namespace op {
 template<typename DType>
 class CuDNNConvolutionOp {
  public:
+  explicit CuDNNConvolutionOp() {
+    init_cudnn_ = false;
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc_));
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&bias_desc_));
+    CUDNN_CALL(cudnnCreateFilterDescriptor(&filter_desc_));
+    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&forward_conv_desc_));
+    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&back_conv_desc_));
+    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&back_conv_desc_w_));
+  }
+
   void Init(const ConvolutionParam& param,
                               int forward_compute_type,
                               int backward_compute_type,
@@ -56,7 +67,6 @@ class CuDNNConvolutionOp {
     auto cudnn_backward_compute_type = convertToCuDNNDataType(backward_compute_type);
     // convert MB to words
     param_.workspace = (param_.workspace << 20) / sizeof(DType);
-    init_cudnn_ = false;
     init_temp_size_ = false;
     dtype_ = DataType<DType>::kCudnnFlag;
     // TensorCore algos only allowed on fp16-I/O convolutions if permitted by the global policy.
@@ -91,15 +101,13 @@ class CuDNNConvolutionOp {
   }
 
   ~CuDNNConvolutionOp() {
-    if (init_cudnn_) {
-      CUDNN_CALL(cudnnDestroyTensorDescriptor(in_desc_));
-      CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc_));
-      CUDNN_CALL(cudnnDestroyTensorDescriptor(bias_desc_));
-      CUDNN_CALL(cudnnDestroyFilterDescriptor(filter_desc_));
-      CUDNN_CALL(cudnnDestroyConvolutionDescriptor(forward_conv_desc_));
-      CUDNN_CALL(cudnnDestroyConvolutionDescriptor(back_conv_desc_));
-      CUDNN_CALL(cudnnDestroyConvolutionDescriptor(back_conv_desc_w_));
-    }
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(in_desc_));
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc_));
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(bias_desc_));
+    CUDNN_CALL(cudnnDestroyFilterDescriptor(filter_desc_));
+    CUDNN_CALL(cudnnDestroyConvolutionDescriptor(forward_conv_desc_));
+    CUDNN_CALL(cudnnDestroyConvolutionDescriptor(back_conv_desc_));
+    CUDNN_CALL(cudnnDestroyConvolutionDescriptor(back_conv_desc_w_));
   }
 
   void Forward(const OpContext &ctx,
@@ -195,7 +203,8 @@ class CuDNNConvolutionOp {
     DType *data_ptr = NULL;
     DType *gdata_ptr = NULL;
     CHECK_EQ(out_grad.size(), 1U);
-    CHECK(in_data.size() == expected && in_grad.size() == expected);
+    CHECK_EQ(in_data.size(), expected);
+    CHECK_EQ(in_grad.size(), expected);
     Stream<gpu> *s = ctx.get_stream<gpu>();
     if (param_.kernel.ndim() == 2) {
       Tensor<gpu, 4, DType> grad = out_grad[conv::kOut].get<gpu, 4, DType>(s);
@@ -357,13 +366,6 @@ class CuDNNConvolutionOp {
     size_t expected = param_.no_bias ? 2 : 3;
     CHECK_EQ(in_shape.size(), expected);
     CHECK_EQ(out_shape.size(), 1U);
-    CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc_));
-    CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
-    CUDNN_CALL(cudnnCreateTensorDescriptor(&bias_desc_));
-    CUDNN_CALL(cudnnCreateFilterDescriptor(&filter_desc_));
-    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&forward_conv_desc_));
-    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&back_conv_desc_));
-    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&back_conv_desc_w_));
 
     TShape dshape = in_shape[conv::kData];
     TShape wshape = in_shape[conv::kWeight];
