@@ -72,11 +72,6 @@ static bool FullyConnectedShape(const nnvm::NodeAttrs& attrs,
 static bool FullyConnectedType(const nnvm::NodeAttrs& attrs,
     std::vector<int> *in_type, std::vector<int> *out_type) {
   CHECK_GE(in_type->size(), 1U);
-  // TODO
-#if 0
-  nnvm::NodeAttrs attrs;
-  attrs.name = "FullyConnected";
-#endif
   return ElemwiseAttr<int, type_is_none, type_assign, true, type_string>(
       attrs, in_type, out_type, -1);
 }

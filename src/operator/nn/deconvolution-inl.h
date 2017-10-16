@@ -22,8 +22,8 @@
  * \brief
  * \author Wei Wu
 */
-#ifndef MXNET_OPERATOR_DECONVOLUTION_INL_H_
-#define MXNET_OPERATOR_DECONVOLUTION_INL_H_
+#ifndef MXNET_OPERATOR_NN_DECONVOLUTION_INL_H_
+#define MXNET_OPERATOR_NN_DECONVOLUTION_INL_H_
 
 #include <dmlc/logging.h>
 #include <dmlc/parameter.h>
@@ -499,4 +499,4 @@ void DeconvolutionGradCompute(const nnvm::NodeAttrs& attrs,
 
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_OPERATOR_DECONVOLUTION_INL_H_
+#endif  // MXNET_OPERATOR_NN_DECONVOLUTION_INL_H_

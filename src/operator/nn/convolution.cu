@@ -34,8 +34,7 @@ namespace op {
 
 // This is to maintain one copy for each type.
 template<typename DType>
-static ConvolutionOp<gpu, DType> &get_op(const ConvolutionParam& param)
-{
+static ConvolutionOp<gpu, DType> &get_op(const ConvolutionParam& param) {
   static thread_local ConvolutionOp<gpu, DType> op;
   op.Init(param);
   return op;
@@ -72,7 +71,7 @@ void ConvolutionCompute<gpu>(const nnvm::NodeAttrs& attrs,
     })
     return;
   }
-  // TODO depth wise conv
+  // TODO(zheng-da): depth wise conv
 #if 0
   else if (param.num_filter == param.num_group &&
       param.layout.value() == mshadow::kNCHW &&
@@ -138,7 +137,7 @@ void ConvolutionGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
     })
     return;
   }
-  // TODO depth wise conv
+  // TODO(zheng-da): depth wise conv
 #if 0
   else if (param.num_filter == param.num_group &&
       param.layout.value() == mshadow::kNCHW &&

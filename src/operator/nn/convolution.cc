@@ -398,7 +398,6 @@ There are other options to tune the performance.
 })
 .set_attr<nnvm::FInferShape>("FInferShape", ConvolutionShape)
 .set_attr<nnvm::FInferType>("FInferType", ConvolutionType)
-// TODO is it OK to use Elemwise functions here?
 .set_attr<FInferStorageType>("FInferStorageType", [](const nnvm::NodeAttrs& attrs,
       const Context& ctx, std::vector<int> *in_attrs, std::vector<int> *out_attrs) {
   const ConvolutionParam& params = nnvm::get<ConvolutionParam>(attrs.parsed);

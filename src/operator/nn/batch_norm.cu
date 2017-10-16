@@ -637,8 +637,7 @@ void BatchNormOp<xpu, DType, AccReal>::DoBackward(mshadow::Stream<gpu> *stream,
 }
 
 template<typename DType>
-static CuDNNBatchNormOp<DType> &GetCuDNNOp(const BatchNormParam& param)
-{
+static CuDNNBatchNormOp<DType> &GetCuDNNOp(const BatchNormParam& param) {
   static thread_local CuDNNBatchNormOp<DType> op;
   op.Init(param);
   return op;

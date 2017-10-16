@@ -22,8 +22,8 @@
  * \brief
  * \author Bing Xu
 */
-#ifndef MXNET_OPERATOR_UPSAMPLING_INL_H_
-#define MXNET_OPERATOR_UPSAMPLING_INL_H_
+#ifndef MXNET_OPERATOR_NN_UPSAMPLING_INL_H_
+#define MXNET_OPERATOR_NN_UPSAMPLING_INL_H_
 
 #include <dmlc/logging.h>
 #include <dmlc/parameter.h>
@@ -175,8 +175,7 @@ class UpSamplingNearestOp {
   UpSamplingParam param_;
 };  // class UpSamplingNearestOp
 
-static inline DeconvolutionParam GetDeconvolutionParam(const UpSamplingParam& param)
-{
+static inline DeconvolutionParam GetDeconvolutionParam(const UpSamplingParam& param) {
   DeconvolutionParam p = DeconvolutionParam();
   int kernel = 2 * param.scale - param.scale % 2;
   int stride = param.scale;
@@ -211,8 +210,7 @@ void UpSamplingCompute(const nnvm::NodeAttrs& attrs,
   } else if (param.sample_type == up_enum::kBilinear) {
     DeconvolutionParam p = GetDeconvolutionParam(param);
     _DeconvolutionCompute<xpu>(p, ctx, inputs, req, outputs);
-  }
-  else {
+  } else {
     LOG(FATAL) << "Unknown sample type";
   }
 }
@@ -233,8 +231,7 @@ void UpSamplingGradCompute(const nnvm::NodeAttrs& attrs,
   } else if (param.sample_type == up_enum::kBilinear) {
     DeconvolutionParam p = GetDeconvolutionParam(param);
     _DeconvolutionGradCompute<xpu>(p, ctx, inputs, req, outputs);
-  }
-  else {
+  } else {
     LOG(FATAL) << "Unknown sample type";
   }
 }
@@ -242,4 +239,4 @@ void UpSamplingGradCompute(const nnvm::NodeAttrs& attrs,
 }  // namespace op
 }  // namespace mxnet
 
-#endif  // MXNET_OPERATOR_UPSAMPLING_INL_H_
+#endif  // MXNET_OPERATOR_NN_UPSAMPLING_INL_H_

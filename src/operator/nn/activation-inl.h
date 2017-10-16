@@ -90,8 +90,7 @@ class ActivationOp {
 };  // class ActivationOp
 
 template<typename xpu, typename ForwardOp, typename BackwardOp, typename DType>
-ActivationOp<xpu, ForwardOp, BackwardOp, DType> &get_activation_op()
-{
+ActivationOp<xpu, ForwardOp, BackwardOp, DType> &get_activation_op() {
   static thread_local ActivationOp<xpu, ForwardOp, BackwardOp, DType> op;
   return op;
 }
@@ -169,4 +168,4 @@ void ActivationGradCompute(const nnvm::NodeAttrs& attrs,
 
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_OPERATOR_ACTIVATION_INL_H_
+#endif  // MXNET_OPERATOR_NN_ACTIVATION_INL_H_

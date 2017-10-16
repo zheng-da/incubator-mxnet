@@ -32,8 +32,7 @@ namespace mxnet {
 namespace op {
 
 template<typename DType>
-static DeconvolutionOp<gpu, DType> &get_op(const DeconvolutionParam& param)
-{
+static DeconvolutionOp<gpu, DType> &get_op(const DeconvolutionParam& param) {
   static thread_local DeconvolutionOp<gpu, DType> op;
   op.Init(param);
   return op;
@@ -80,7 +79,6 @@ void DeconvolutionCompute<gpu>(const nnvm::NodeAttrs& attrs,
         "This deconvolution is not supported by cudnn, MXNET deconvolution is applied.";
       get_op<DType>(param).Forward(ctx, inputs, req, outputs);
     } else {
-      // TODO is the number of inputs here correct?
       std::vector<TShape> in_shape(inputs.size());
       std::vector<TShape> out_shape(1, outputs[0].shape_);
       for (size_t i = 0; i < in_shape.size(); i++) {
@@ -131,7 +129,6 @@ void DeconvolutionGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
       get_op<DType>(param).Backward(ctx, std::vector<TBlob>{out_grad},
           in_data, req, in_grad);
     } else {
-      // TODO is the number of inputs here correct?
       std::vector<TShape> in_shape(in_data.size());
       std::vector<TShape> out_shape(1, out_grad.shape_);
       for (size_t i = 0; i < in_shape.size(); i++) {

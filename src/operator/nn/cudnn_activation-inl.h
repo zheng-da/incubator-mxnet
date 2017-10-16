@@ -23,8 +23,8 @@
  * \author Bing Xu
 */
 
-#ifndef MXNET_OPERATOR_CUDNN_ACTIVATION_INL_H_
-#define MXNET_OPERATOR_CUDNN_ACTIVATION_INL_H_
+#ifndef MXNET_OPERATOR_NN_CUDNN_ACTIVATION_INL_H_
+#define MXNET_OPERATOR_NN_CUDNN_ACTIVATION_INL_H_
 #include <algorithm>
 #include <vector>
 #include "./activation-inl.h"
@@ -34,7 +34,7 @@ namespace op {
 template<typename DType>
 class CuDNNActivationOp {
  public:
-  explicit CuDNNActivationOp() {
+  CuDNNActivationOp() {
     init_cudnn_ = false;
     dtype_ = mshadow::DataType<DType>::kCudnnFlag;
     #if CUDNN_MAJOR >= 5
@@ -226,4 +226,4 @@ class CuDNNActivationOp {
 };  // class CuDNNActivationOp
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_OPERATOR_CUDNN_ACTIVATION_INL_H_
+#endif  // MXNET_OPERATOR_NN_CUDNN_ACTIVATION_INL_H_

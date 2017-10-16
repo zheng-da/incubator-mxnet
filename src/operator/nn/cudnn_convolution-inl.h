@@ -43,7 +43,7 @@ namespace op {
 template<typename DType>
 class CuDNNConvolutionOp {
  public:
-  explicit CuDNNConvolutionOp() {
+  CuDNNConvolutionOp() {
     init_cudnn_ = false;
     CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc_));
     CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
@@ -909,4 +909,4 @@ class CuDNNConvolutionOp {
 }  // namespace op
 }  // namespace mxnet
 
-#endif  // MXNET_OPERATOR_CUDNN_CONVOLUTION_INL_H_
+#endif  // MXNET_OPERATOR_NN_CUDNN_CONVOLUTION_INL_H_

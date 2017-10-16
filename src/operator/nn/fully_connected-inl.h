@@ -21,8 +21,8 @@
  * \file fully_connect_op-inl.h
  * \brief fully connect operator and symbol
 */
-#ifndef MXNET_OPERATOR_FULLY_CONNECTED_INL_H_
-#define MXNET_OPERATOR_FULLY_CONNECTED_INL_H_
+#ifndef MXNET_OPERATOR_NN_FULLY_CONNECTED_INL_H_
+#define MXNET_OPERATOR_NN_FULLY_CONNECTED_INL_H_
 
 #include <dmlc/logging.h>
 #include <dmlc/parameter.h>
@@ -238,4 +238,4 @@ void FullyConnectedGradCompute(const nnvm::NodeAttrs& attrs,
 
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_OPERATOR_FULLY_CONNECTED_INL_H_
+#endif  // MXNET_OPERATOR_NN_FULLY_CONNECTED_INL_H_

@@ -24,13 +24,13 @@
 */
 
 #include "batch_norm-inl.h"
-#include "../elemwise_op_common.h"
-#include <nnvm/op_attr_types.h>
 #if MXNET_USE_MKL2017 == 1
 #include <mkl_memory.h>
 #include "./mkl/mkl_memory-inl.h"
 #include "./mkl/mkl_batch_norm-inl.h"
 #endif  // MXNET_USE_MKL2017
+#include <nnvm/op_attr_types.h>
+#include "../elemwise_op_common.h"
 
 /*! \brief inverse standard deviation <-> variance */
 #define VARIANCE_TO_INVSTD(__var$,    __eps$)   (1.0/sqrt((__var$) + DType(__eps$)))
@@ -374,19 +374,6 @@ static bool BatchNormType(const nnvm::NodeAttrs& attrs,
       UNIFORM_TYPE_CHECK((*in_type)[i], dtype_param, ListArguments()[i]);
     }
   }
-  // TODO is this a right way?
-#if 0
-  for (index_t i = 0; i < aux_type->size(); ++i) {
-    if ((*aux_type)[i] != -1) {
-      UNIFORM_TYPE_CHECK((*aux_type)[i], dtype_param, ListArguments()[i]);
-    }
-  }
-  const size_t n_aux = this->ListAuxiliaryStates().size();
-  aux_type->clear();
-  for (size_t i = 0; i < n_aux; ++i) {
-    aux_type->push_back(dtype_param);
-  }
-#endif
   const size_t n_out = ListOutputs().size();
   out_type->clear();
   out_type->push_back(dtype);
@@ -484,9 +471,6 @@ then set ``gamma`` to 1 and its gradient to 0.
 
 NNVM_REGISTER_OP(_backward_BatchNorm)
 .set_num_outputs(5)
-.set_attr<nnvm::FMutateInputs>("FMutateInputs", [](const nnvm::NodeAttrs& attrs) {
-  return std::vector<uint32_t>{6, 7};
-})
 .set_attr<nnvm::TIsBackward>("TIsBackward", true)
 .set_attr_parser(ParamParser<BatchNormParam>)
 .set_attr<FCompute>("FCompute<cpu>", BatchNormGradCompute<cpu>);

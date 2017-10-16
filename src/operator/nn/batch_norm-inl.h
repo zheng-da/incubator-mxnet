@@ -22,8 +22,8 @@
  * \brief
  * \author Bing Xu, Chris Olivier
  */
-#ifndef MXNET_OPERATOR_BATCH_NORM_INL_H_
-#define MXNET_OPERATOR_BATCH_NORM_INL_H_
+#ifndef MXNET_OPERATOR_NN_BATCH_NORM_INL_H_
+#define MXNET_OPERATOR_NN_BATCH_NORM_INL_H_
 
 #include <dmlc/logging.h>
 #include <dmlc/parameter.h>
@@ -46,7 +46,8 @@ namespace mxnet {
 namespace op {
 
 namespace batchnorm {
-enum BatchNormOpInputs {kData, kGamma, kBeta, kInMovingMean, kInMovingVar};  // kGamma: weights, kBeta: biases
+enum BatchNormOpInputs {kData, kGamma, kBeta, kInMovingMean,
+  kInMovingVar};  // kGamma: weights, kBeta: biases
 enum BatchNormOpOutputs {kOut, kMean, kVar};  // req, out_data
 enum BatchNormOpAuxiliary {kMovingMean, kMovingVar};  // aux_states
 
@@ -212,8 +213,7 @@ class BatchNormOp {
 };  // class BatchNormOp
 
 template<typename xpu, typename DType, typename AccReal>
-static BatchNormOp<xpu, DType, AccReal> &GetBatchNormOp(const BatchNormParam& param)
-{
+static BatchNormOp<xpu, DType, AccReal> &GetBatchNormOp(const BatchNormParam& param) {
   static thread_local BatchNormOp<xpu, DType, AccReal> op;
   op.Init(param);
   return op;
@@ -387,5 +387,5 @@ extern volatile bool disable_mkl;
 #pragma GCC diagnostic pop
 #endif
 
-#endif  // MXNET_OPERATOR_BATCH_NORM_INL_H_
+#endif  // MXNET_OPERATOR_NN_BATCH_NORM_INL_H_
 

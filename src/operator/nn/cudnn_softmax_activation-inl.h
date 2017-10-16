@@ -23,8 +23,8 @@
  * \author Bing Xu
 */
 
-#ifndef MXNET_OPERATOR_CUDNN_SOFTMAX_ACTIVATION_INL_H_
-#define MXNET_OPERATOR_CUDNN_SOFTMAX_ACTIVATION_INL_H_
+#ifndef MXNET_OPERATOR_NN_CUDNN_SOFTMAX_ACTIVATION_INL_H_
+#define MXNET_OPERATOR_NN_CUDNN_SOFTMAX_ACTIVATION_INL_H_
 #include <algorithm>
 #include <vector>
 #include "./softmax_activation-inl.h"
@@ -33,7 +33,7 @@ namespace mxnet {
 namespace op {
 class CuDNNSoftmaxActivationOp {
  public:
-  explicit CuDNNSoftmaxActivationOp() {
+  CuDNNSoftmaxActivationOp() {
     init_cudnn_ = false;
     dtype_ = CUDNN_DATA_FLOAT;
   }
@@ -167,4 +167,4 @@ class CuDNNSoftmaxActivationOp {
 };  // class CuDNNSoftmaxActivationOp
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_OPERATOR_CUDNN_SOFTMAX_ACTIVATION_INL_H_
+#endif  // MXNET_OPERATOR_NN_CUDNN_SOFTMAX_ACTIVATION_INL_H_

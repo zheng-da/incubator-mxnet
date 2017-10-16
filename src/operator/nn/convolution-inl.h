@@ -416,4 +416,4 @@ void ConvolutionGradCompute(const nnvm::NodeAttrs& attrs,
 
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_OPERATOR_CONVOLUTION_INL_H_
+#endif  // MXNET_OPERATOR_NN_CONVOLUTION_INL_H_

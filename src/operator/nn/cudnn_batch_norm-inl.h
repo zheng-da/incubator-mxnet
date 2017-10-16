@@ -23,8 +23,8 @@
  * \author Junyuan Xie
 */
 
-#ifndef MXNET_OPERATOR_CUDNN_BATCH_NORM_INL_H_
-#define MXNET_OPERATOR_CUDNN_BATCH_NORM_INL_H_
+#ifndef MXNET_OPERATOR_NN_CUDNN_BATCH_NORM_INL_H_
+#define MXNET_OPERATOR_NN_CUDNN_BATCH_NORM_INL_H_
 #include <vector>
 #include <map>
 #include <string>
@@ -44,7 +44,7 @@ enum CuDNNBatchNormOpAuxiliary {kMovingMean, kMovingInvVar};
 template<typename DType>
 class CuDNNBatchNormOp {
  public:
-  explicit CuDNNBatchNormOp() {
+  CuDNNBatchNormOp() {
     using namespace mshadow;
     dtype_ = DataType<DType>::kCudnnFlag;
     // For float16 input type beta, gamma, mean, and average are stored in float32.
@@ -302,4 +302,4 @@ class CuDNNBatchNormOp {
 #endif  // MXNET_USE_CUDNN == 1 && CUDNN_MAJOR >= 4
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_OPERATOR_CUDNN_BATCH_NORM_INL_H_
+#endif  // MXNET_OPERATOR_NN_CUDNN_BATCH_NORM_INL_H_

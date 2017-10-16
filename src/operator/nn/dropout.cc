@@ -39,8 +39,7 @@ struct DropoutGrad {
   }
 };
 
-std::vector<std::string> ListOutputs()
-{
+std::vector<std::string> ListOutputs() {
   return std::vector<std::string>{"output", "mask"};
 }
 

@@ -56,8 +56,7 @@ void ActivationCompute<gpu>(const nnvm::NodeAttrs& attrs,
       get_activation_op<gpu, mshadow_op::softrelu, mshadow_op::softrelu_grad, DType>().Forward(ctx,
           inputs[0], req[0], outputs[0]);
     });
-  }
-  else {
+  } else {
     MSHADOW_REAL_TYPE_SWITCH(inputs[0].type_flag_, DType, {
       get_cudnn_op<DType>(param).Forward(ctx, inputs[0], req[0], outputs[0]);
     });
@@ -81,8 +80,7 @@ void ActivationGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
       get_activation_op<gpu, mshadow_op::softrelu, mshadow_op::softrelu_grad, DType>().Backward(
           ctx, inputs[0], inputs[1], req[0], outputs[0]);
     });
-  }
-  else {
+  } else {
     MSHADOW_REAL_TYPE_SWITCH(inputs[0].type_flag_, DType, {
       get_cudnn_op<DType>(param).Backward(ctx, inputs[0], inputs[2], inputs[1], req[0], outputs[0]);
     });
