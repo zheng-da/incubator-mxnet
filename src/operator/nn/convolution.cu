@@ -24,8 +24,8 @@
 */
 
 #include "./convolution-inl.h"
-#include "./depthwise_convolution-inl.h"
 #include <vector>
+#include "./depthwise_convolution-inl.h"
 #if MXNET_USE_CUDNN == 1
 #include "./cudnn/cudnn_convolution-inl.h"
 #endif  // MXNET_USE_CUDNN
@@ -129,8 +129,6 @@ void ConvolutionGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
   if (param.kernel.ndim() == 1) {
     MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
       ConvolutionOp<gpu, DType> &op = get_op<DType>(param);
-      // We only need in_data and weight
-      in_data.resize(2);
       op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
     })
     return;
@@ -158,15 +156,11 @@ void ConvolutionGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
   MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
     if (param.cudnn_off) {
       ConvolutionOp<gpu, DType> &op = get_op<DType>(param);
-      // We only need in_data and weight
-      in_data.resize(2);
       op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
     } else if (!CuDNNConvolutionOp<DType>::Supports(param,
           compute_type, compute_type, ctx.run_ctx.ctx)) {
       LOG(WARNING) << "This convolution is not supported by cudnn, MXNET convolution is applied.";
       ConvolutionOp<gpu, DType> &op = get_op<DType>(param);
-      // We only need in_data and weight
-      in_data.resize(2);
       op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
     } else {
       // The first element stores out grad.
@@ -182,8 +176,6 @@ void ConvolutionGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
 #else
   MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
     ConvolutionOp<gpu, DType> &op = get_op<DType>(param);
-    // We only need in_data and weight
-    in_data.resize(2);
     op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
   })
 #endif  // MXNET_USE_CUDNN
