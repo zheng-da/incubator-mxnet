@@ -44,12 +44,8 @@ template<typename DType>
 static CuDNNConvolutionOp<DType> &get_cudnn_op(const ConvolutionParam& param,
     int forward_compute_type, int backward_compute_type,
     const std::vector<TShape>& in_shape, const std::vector<TShape>& out_shape,
-    const Context& ctx, bool backward) {
-  // Convolution forward has to be called before backward for this operator.
-  // So we can't make this operator thread local. backward might be called
-  // in another thread.
-  static CuDNNConvolutionOp<DType> op;
-  if (!backward)
+    const Context& ctx) {
+  static thread_local CuDNNConvolutionOp<DType> op;
   op.Init(param, forward_compute_type, backward_compute_type,
       in_shape, out_shape, ctx);
   return op;
@@ -104,7 +100,7 @@ void ConvolutionCompute<gpu>(const nnvm::NodeAttrs& attrs,
       for (size_t i = 0; i < in_shape.size(); i++)
         in_shape[i] = inputs[i].shape_;
       CuDNNConvolutionOp<DType> &op = get_cudnn_op<DType>(param,
-          compute_type, compute_type, in_shape, out_shape, ctx.run_ctx.ctx, false);
+          compute_type, compute_type, in_shape, out_shape, ctx.run_ctx.ctx);
       op.Forward(ctx, inputs, req, outputs);
     }
   })
@@ -174,7 +170,7 @@ void ConvolutionGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
       for (size_t i = 0; i < in_shape.size(); i++)
         in_shape[i] = in_data[i].shape_;
       CuDNNConvolutionOp<DType> &op = get_cudnn_op<DType>(param,
-          compute_type, compute_type, in_shape, out_shape, ctx.run_ctx.ctx, true);
+          compute_type, compute_type, in_shape, out_shape, ctx.run_ctx.ctx);
       op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
     }
   })

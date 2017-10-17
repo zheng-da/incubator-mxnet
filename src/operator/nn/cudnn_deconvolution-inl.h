@@ -41,7 +41,6 @@ template<typename DType>
 class CuDNNDeconvolutionOp {
  public:
   CuDNNDeconvolutionOp() {
-    init_cudnn_ = false;
     CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc_));
     CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
     CUDNN_CALL(cudnnCreateTensorDescriptor(&bias_desc_));
@@ -64,8 +63,6 @@ class CuDNNDeconvolutionOp {
     auto cudnn_backward_compute_type = convertToCuDNNDataType(backward_compute_type);
     // convert MB to words
     param_.workspace = (param_.workspace << 20) / sizeof(DType);
-    init_cudnn_ = false;
-    init_temp_size_ = false;
     dtype_ = mshadow::DataType<DType>::kCudnnFlag;
     // TensorCore algos only allowed on fp16-I/O deconvolutions if permitted by the global policy.
     cudnn_tensor_core_ = DataType<DType>::kFlag == kFloat16 && GetEnvAllowTensorCore();
@@ -590,7 +587,6 @@ class CuDNNDeconvolutionOp {
                                             &bias_shape[0],
                                             &bias_stride[0]));
     }
-    init_cudnn_ = true;
   }
 
   void SelectAlgo(const Context& ctx,
@@ -842,7 +838,6 @@ class CuDNNDeconvolutionOp {
   }
 
   void GetTempSize(const OpContext& ctx) {
-    if (init_temp_size_) return;
     mshadow::Stream<gpu> *s = ctx.get_stream<gpu>();
     size_t back_data_algo_workspace_size = 0;
     size_t back_filter_algo_workspace_size = 0;
@@ -872,7 +867,6 @@ class CuDNNDeconvolutionOp {
     forward_workspace_byte_ = back_data_algo_workspace_size;
     backward_workspace_byte_ = std::max(forward_algo_workspace_size,
                                         back_filter_algo_workspace_size);
-    init_temp_size_ = true;
   }
 
   int *CastTShapeToIntPtr(const TShape& s, std::vector<int> *buffer) {
@@ -908,8 +902,6 @@ class CuDNNDeconvolutionOp {
   const std::vector<TShape> in_shapes_;
   const std::vector<TShape> out_shapes_;
 
-  bool init_cudnn_;
-  bool init_temp_size_;
   // Temp workspace size in bytes needed for Forward() operation.  Note that
   // in deconvolution, this is handled by the cuDNN backprop-to-data kernel.
   size_t forward_workspace_byte_;

@@ -44,7 +44,6 @@ template<typename DType>
 class CuDNNConvolutionOp {
  public:
   CuDNNConvolutionOp() {
-    init_cudnn_ = false;
     CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc_));
     CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
     CUDNN_CALL(cudnnCreateTensorDescriptor(&bias_desc_));
@@ -67,7 +66,6 @@ class CuDNNConvolutionOp {
     auto cudnn_backward_compute_type = convertToCuDNNDataType(backward_compute_type);
     // convert MB to words
     param_.workspace = (param_.workspace << 20) / sizeof(DType);
-    init_temp_size_ = false;
     dtype_ = DataType<DType>::kCudnnFlag;
     // TensorCore algos only allowed on fp16-I/O convolutions if permitted by the global policy.
     cudnn_tensor_core_ = DataType<DType>::kFlag == kFloat16 && GetEnvAllowTensorCore();
@@ -229,6 +227,7 @@ class CuDNNConvolutionOp {
       data_ptr = data.dptr_;
       gdata_ptr = gdata.dptr_;
     }
+    GetTempSize(ctx);
     Tensor<gpu, 1, DType> workspace = AllocateTempWorkspace(ctx, backward_workspace_byte_);
     size_t workspace_size = TensorSizeBytes(workspace);
     for (uint32_t g = 0; g < param_.num_group; ++g) {
@@ -571,7 +570,6 @@ class CuDNNConvolutionOp {
                                           &bias_shape[0],
                                           &bias_stride[0]));
     }
-    init_cudnn_ = true;
   }
 
   void SelectAlgo(const Context& ctx,
@@ -814,7 +812,6 @@ class CuDNNConvolutionOp {
   }
 
   void GetTempSize(const OpContext& ctx) {
-    if (init_temp_size_) return;
     mshadow::Stream<gpu> *s = ctx.get_stream<gpu>();
     size_t back_size = 0, back_size_w = 0;
     CUDNN_CALL(cudnnGetConvolutionBackwardDataWorkspaceSize(s->dnn_handle_,
@@ -839,8 +836,6 @@ class CuDNNConvolutionOp {
                out_desc_,
                forward_algo_.AlgoNumber(),
                &forward_workspace_byte_));
-
-    init_temp_size_ = true;
   }
 
   int *CastTShapeToIntPtr(const TShape& s, std::vector<int> *buffer) {
@@ -873,8 +868,6 @@ class CuDNNConvolutionOp {
   std::vector<int> param_dilate_;
   std::vector<int> param_pad_;
 
-  bool init_cudnn_;
-  bool init_temp_size_;
   // Temp workspace size in bytes needed for Forward() operation.
   size_t forward_workspace_byte_;
   // Temp workspace size in bytes needed for Backward() operation.
