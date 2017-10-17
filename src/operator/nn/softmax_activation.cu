@@ -25,7 +25,7 @@
 #include "./softmax_activation-inl.h"
 #include "../mshadow_op.h"
 #if MXNET_USE_CUDNN == 1
-#include "./cudnn_softmax_activation-inl.h"
+#include "./cudnn/cudnn_softmax_activation-inl.h"
 #endif
 
 namespace mxnet {

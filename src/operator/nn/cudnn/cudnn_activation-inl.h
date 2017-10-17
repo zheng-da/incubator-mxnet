@@ -23,11 +23,11 @@
  * \author Bing Xu
 */
 
-#ifndef MXNET_OPERATOR_NN_CUDNN_ACTIVATION_INL_H_
-#define MXNET_OPERATOR_NN_CUDNN_ACTIVATION_INL_H_
+#ifndef MXNET_OPERATOR_NN_CUDNN_CUDNN_ACTIVATION_INL_H_
+#define MXNET_OPERATOR_NN_CUDNN_CUDNN_ACTIVATION_INL_H_
 #include <algorithm>
 #include <vector>
-#include "./activation-inl.h"
+#include "../activation-inl.h"
 
 namespace mxnet {
 namespace op {
@@ -215,4 +215,4 @@ class CuDNNActivationOp {
 };  // class CuDNNActivationOp
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_OPERATOR_NN_CUDNN_ACTIVATION_INL_H_
+#endif  // MXNET_OPERATOR_NN_CUDNN_CUDNN_ACTIVATION_INL_H_

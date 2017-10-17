@@ -25,7 +25,7 @@
 
 #include "./cudnn_batch_norm-inl.h"
 #include <nnvm/op_attr_types.h>
-#include "../elemwise_op_common.h"
+#include "../../elemwise_op_common.h"
 
 namespace mxnet {
 namespace op {
