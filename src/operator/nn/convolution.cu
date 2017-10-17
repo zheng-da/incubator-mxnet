@@ -24,6 +24,7 @@
 */
 
 #include "./convolution-inl.h"
+#include "./depthwise_convolution-inl.h"
 #include <vector>
 #if MXNET_USE_CUDNN == 1
 #include "./cudnn_convolution-inl.h"
@@ -66,19 +67,21 @@ void ConvolutionCompute<gpu>(const nnvm::NodeAttrs& attrs,
       op.Forward(ctx, inputs, req, outputs);
     })
     return;
-  }
-  // TODO(zheng-da): depth wise conv
-#if 0
-  else if (param.num_filter == param.num_group &&
+  } else if (param.num_filter == param.num_group &&
       param.layout.value() == mshadow::kNCHW &&
-      param.num_filter == (*in_shape)[conv::kData][1] &&
+      param.num_filter == inputs[conv::kData].shape_[1] &&
       param.kernel.ndim() == 2 &&
       param.dilate == mshadow::Shape2(1, 1) &&
       dtype == mshadow::kFloat32) {
-    op = new DepthwiseConvolutionOp<float>(param, *in_shape, *out_shape);
-    return op;
+    static thread_local DepthwiseConvolutionOp<float> op;
+    std::vector<TShape> in_shape(inputs.size());
+    std::vector<TShape> out_shape(1, outputs[0].shape_);
+    for (size_t i = 0; i < in_shape.size(); i++)
+      in_shape[i] = inputs[i].shape_;
+    op.Init(param, in_shape, out_shape);
+    op.Forward(ctx, inputs, req, outputs);
+    return;
   }
-#endif
 
 #if MXNET_USE_CUDNN == 1
   // On fp16-I/O instances, use fp32 compute (i.e. pseudo-fp16).
@@ -94,7 +97,6 @@ void ConvolutionCompute<gpu>(const nnvm::NodeAttrs& attrs,
       ConvolutionOp<gpu, DType> &op = get_op<DType>(param);
       op.Forward(ctx, inputs, req, outputs);
     } else {
-      // The first element stores out grad.
       std::vector<TShape> in_shape(inputs.size());
       std::vector<TShape> out_shape(1, outputs[0].shape_);
       for (size_t i = 0; i < in_shape.size(); i++)
@@ -132,19 +134,22 @@ void ConvolutionGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
       op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
     })
     return;
-  }
-  // TODO(zheng-da): depth wise conv
-#if 0
-  else if (param.num_filter == param.num_group &&
+  } else if (param.num_filter == param.num_group &&
       param.layout.value() == mshadow::kNCHW &&
-      param.num_filter == (*in_shape)[conv::kData][1] &&
+      param.num_filter == in_data[conv::kData].shape_[1] &&
       param.kernel.ndim() == 2 &&
       param.dilate == mshadow::Shape2(1, 1) &&
       dtype == mshadow::kFloat32) {
-    op = new DepthwiseConvolutionOp<float>(param, *in_shape, *out_shape);
-    return op;
+    static thread_local DepthwiseConvolutionOp<float> op;
+    // The first element stores out grad.
+    std::vector<TShape> in_shape(in_data.size());
+    std::vector<TShape> out_shape(1, out_grad.shape_);
+    for (size_t i = 0; i < in_shape.size(); i++)
+      in_shape[i] = in_data[i].shape_;
+    op.Init(param, in_shape, out_shape);
+    op.Backward(ctx, std::vector<TBlob>{out_grad}, in_data, req, in_grad);
+    return;
   }
-#endif
 
 #if MXNET_USE_CUDNN == 1
   // On fp16-I/O instances, use fp32 compute (i.e. pseudo-fp16).
