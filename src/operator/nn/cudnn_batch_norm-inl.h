@@ -85,29 +85,7 @@ class CuDNNBatchNormOp {
     CHECK_GE(in_data[cudnnbatchnorm::kData].ndim(), 2);
     CHECK_LE(in_data[cudnnbatchnorm::kData].ndim(), 4);
 
-    mshadow::Shape<4> new_shape;
-    for (int i = 0; i < 4; ++i) {
-      if (i < in_data[cudnnbatchnorm::kData].ndim()) {
-        new_shape[i] = in_data[cudnnbatchnorm::kData].shape_[i];
-      } else {
-        new_shape[i] = 1;
-      }
-    }
-
-    if (new_shape != shape_) {
-      shape_ = new_shape;
-      CUDNN_CALL(cudnnSetTensor4dDescriptor(io_desc_,
-                                            CUDNN_TENSOR_NCHW,
-                                            dtype_,
-                                            shape_[0],
-                                            shape_[1],
-                                            shape_[2],
-                                            shape_[3]));
-      CUDNN_CALL(cudnnDeriveBNTensorDescriptor(mean_desc_,
-                                               io_desc_,
-                                               CUDNN_BATCHNORM_SPATIAL));
-    }
-
+    Init(in_data[cudnnbatchnorm::kData]);
     Stream<gpu> *s = ctx.get_stream<gpu>();
     Tensor<gpu, 4, DType> x =
       in_data[cudnnbatchnorm::kData].get_with_shape<gpu, 4, DType>(shape_, s);
@@ -194,6 +172,7 @@ class CuDNNBatchNormOp {
     CHECK(ctx.is_train && !param_.use_global_stats)
         << "use global statistics is not yet supported in CuDNNBatchNorm";
 
+    Init(in_data[cudnnbatchnorm::kData]);
     Stream<gpu> *s = ctx.get_stream<gpu>();
     Tensor<gpu, 4, DType> x =
       in_data[cudnnbatchnorm::kData].get_with_shape<gpu, 4, DType>(shape_, s);
@@ -291,6 +270,27 @@ class CuDNNBatchNormOp {
   }
 
  private:
+  void Init(const TBlob &in_data) {
+    for (int i = 0; i < 4; ++i) {
+      if (i < in_data.ndim()) {
+        shape_[i] = in_data.shape_[i];
+      } else {
+        shape_[i] = 1;
+      }
+    }
+
+    CUDNN_CALL(cudnnSetTensor4dDescriptor(io_desc_,
+                                          CUDNN_TENSOR_NCHW,
+                                          dtype_,
+                                          shape_[0],
+                                          shape_[1],
+                                          shape_[2],
+                                          shape_[3]));
+    CUDNN_CALL(cudnnDeriveBNTensorDescriptor(mean_desc_,
+                                             io_desc_,
+                                             CUDNN_BATCHNORM_SPATIAL));
+  }
+
   cudnnDataType_t dtype_;
   int dtype_param_;
   cudnnTensorDescriptor_t io_desc_, mean_desc_;

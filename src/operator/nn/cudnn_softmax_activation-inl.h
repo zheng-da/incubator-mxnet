@@ -34,8 +34,8 @@ namespace op {
 class CuDNNSoftmaxActivationOp {
  public:
   CuDNNSoftmaxActivationOp() {
-    init_cudnn_ = false;
     dtype_ = CUDNN_DATA_FLOAT;
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&shape_desc_));
   }
 
   void Init(SoftmaxActivationParam param) {
@@ -43,9 +43,7 @@ class CuDNNSoftmaxActivationOp {
   }
 
   ~CuDNNSoftmaxActivationOp() {
-    if (init_cudnn_) {
-      CUDNN_CALL(cudnnDestroyTensorDescriptor(shape_desc_));
-    }
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(shape_desc_));
   }
 
   void Forward(const OpContext &ctx, const TBlob &in_data,
@@ -84,17 +82,13 @@ class CuDNNSoftmaxActivationOp {
     float alpha = 1.0f;
     float beta = 0.0f;
     CHECK_EQ(s->dnn_handle_ownership_, mshadow::Stream<gpu>::OwnHandle);
-    if (!init_cudnn_) {
-      init_cudnn_ = true;
-      CUDNN_CALL(cudnnCreateTensorDescriptor(&shape_desc_));
-      CUDNN_CALL(cudnnSetTensor4dDescriptor(shape_desc_,
-                                            CUDNN_TENSOR_NCHW,
-                                            dtype_,
-                                            data.shape_[0],
-                                            data.shape_[1],
-                                            data.shape_[2],
-                                            data.shape_[3]));
-    }
+    CUDNN_CALL(cudnnSetTensor4dDescriptor(shape_desc_,
+                                          CUDNN_TENSOR_NCHW,
+                                          dtype_,
+                                          data.shape_[0],
+                                          data.shape_[1],
+                                          data.shape_[2],
+                                          data.shape_[3]));
     CUDNN_CALL(cudnnSoftmaxForward(s->dnn_handle_,
                                    CUDNN_SOFTMAX_ACCURATE,
                                    softmax_mode,
@@ -160,7 +154,6 @@ class CuDNNSoftmaxActivationOp {
   }
 
  private:
-  bool init_cudnn_;
   cudnnDataType_t dtype_;
   cudnnTensorDescriptor_t shape_desc_;
   SoftmaxActivationParam param_;
