@@ -31,11 +31,6 @@
 #include "mxnet/engine.h"
 #include "ps/ps.h"
 #include "./kvstore_dist_server.h"
-#if MKL_EXPERIMENTAL == 1
-#include <mkl_memory.h>
-#include "../operator/mkl/mkl_memory-inl.h"
-#include "../operator/mkl/mkl_util-inl.h"
-#endif
 namespace mxnet {
 namespace kvstore {
 
@@ -186,9 +181,6 @@ class KVStoreDist : public KVStoreLocal {
         // convert to ps keys
         size_t size = recv_buf.shape().Size();
         PSKV& pskv = EncodeKey(key, size);
-#if MKL_EXPERIMENTAL == 1
-        mkl_set_tblob_eager_mode(recv_buf.data());
-#endif
         real_t* data = recv_buf.data().dptr<real_t>();
         // false means not to delete data when SArray is deleted
         auto vals = new ps::SArray<real_t>(data, size, false);
@@ -293,9 +285,6 @@ class KVStoreDist : public KVStoreLocal {
           size_t size = send_buf.shape().Size();
           PSKV& pskv = EncodeKey(key, size);
 
-#if MKL_EXPERIMENTAL == 1
-          mkl_set_tblob_eager_mode(send_buf.data());
-#endif
           real_t* data = send_buf.data().dptr<real_t>();
           // do push. false means no delete
           ps::SArray<real_t> vals(data, size, false);
@@ -326,9 +315,6 @@ class KVStoreDist : public KVStoreLocal {
       // allocate memory for the buffer
       size_t num_rows = indices.shape().Size();
       recv_buf->CheckAndAlloc({mshadow::Shape1(num_rows)});
-#if MKL_EXPERIMENTAL == 1
-      mkl_set_tblob_eager_mode(recv_buf->data());
-#endif
       real_t* data = recv_buf->data().dptr<real_t>();
       auto indices_data = indices.data();
       const auto offsets = indices_data.dptr<int64_t>();
@@ -363,9 +349,6 @@ class KVStoreDist : public KVStoreLocal {
     using namespace rowsparse;
     auto push_to_servers = [this, key, &send_buf]
                            (RunContext rctx, Engine::CallbackOnComplete cb) {
-#if MKL_EXPERIMENTAL == 1
-      mkl_set_tblob_eager_mode(send_buf.data());
-#endif
       real_t* data = send_buf.data().dptr<real_t>();
       bool init = send_buf.storage_initialized();
       const int64_t num_rows = init ? send_buf.aux_shape(kIdx)[0] : 0;

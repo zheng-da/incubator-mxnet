@@ -28,11 +28,7 @@
 #include <nnvm/graph_attr_types.h>
 #include "../common/utils.h"
 #include "./exec_pass.h"
-#if MXNET_USE_MKL2017 == 1
-#include <mkl_memory.h>
-#include "../operator/mkl/mkl_memory-inl.h"
-#include "../operator/mkl/mkl_util-inl.h"
-#endif
+
 namespace mxnet {
 
 namespace op {
@@ -127,10 +123,6 @@ class StatefulComputeExecutor : public StorageFallbackOpExecutor {
     PreFCompute(is_gpu);
     fcompute_(state_, op_ctx, in_data_, req, out_data_);
     PostFCompute(is_gpu);
-#if MKL_EXPERIMENTAL == 1
-    mkl_tblobs_prv_to_cpu(in_data_);
-    mkl_tblobs_prv_to_cpu(out_data_);
-#endif
   }
 
   ExecType exec_type() const override {
@@ -196,10 +188,6 @@ class FComputeExecutor : public StorageFallbackOpExecutor {
     PreFCompute(is_gpu);
     fcompute_(attrs_, op_ctx, in_data_, req, out_data_);
     PostFCompute(is_gpu);
-#if MKL_EXPERIMENTAL == 1
-    mkl_tblobs_prv_to_cpu(in_data_);
-    mkl_tblobs_prv_to_cpu(out_data_);
-#endif
   }
 
   ExecType exec_type() const override {

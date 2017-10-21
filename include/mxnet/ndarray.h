@@ -34,12 +34,12 @@
 #include <map>
 #include <string>
 #include <memory>
+#if MXNET_USE_MKLDNN == 1
+#include <mkldnn.hpp>
+#endif
 #include "./base.h"
 #include "./storage.h"
 #include "./engine.h"
-#if MKL_EXPERIMENTAL == 1
-#include <mkl_memory.h>
-#endif
 // check c++11
 #if DMLC_USE_CXX11 == 0
 #error "cxx11 was required for ndarray module"
@@ -84,8 +84,12 @@ enum NDArrayStorageType {
   kDefaultStorage,         // dense
   kRowSparseStorage,       // row sparse
   kCSRStorage,             // csr
+#if MXNET_USE_MKLDNN == 1
+  kMKLDNNStorage,          // MKLDNN
+#endif
 };
 
+class MKLDNNMemory;
 
 /*!
  * \brief ndarray interface
@@ -94,9 +98,6 @@ class NDArray {
  public:
   /*! \brief default constructor */
   NDArray() {
-#if MKL_EXPERIMENTAL == 1
-    Mkl_mem_ = MKLMemHolder::create();
-#endif
   }
   /*!
    * \brief constructs a new dynamic NDArray
@@ -109,9 +110,6 @@ class NDArray {
           bool delay_alloc = false, int dtype = mshadow::default_type_flag)
       : ptr_(std::make_shared<Chunk>(shape, ctx, delay_alloc, dtype)),
         shape_(shape), dtype_(dtype), entry_({nullptr, 0, 0}) {
-#if MKL_EXPERIMENTAL == 1
-    Mkl_mem_ = std::make_shared<MKLMemHolder>();
-#endif
   }
   /*! \brief constructor for NDArray with storage type
    */
@@ -154,9 +152,6 @@ class NDArray {
       }
       ptr_ = std::make_shared<Chunk>(stype, storage_shape, ctx, delay_alloc,
                                      dtype, aux_types, aux_shapes);
-#if MKL_EXPERIMENTAL == 1
-      Mkl_mem_ = std::make_shared<MKLMemHolder>();
-#endif
   }
   /*!
    * \brief constructing a static NDArray that shares data with TBlob
@@ -168,9 +163,6 @@ class NDArray {
   NDArray(const TBlob &data, int dev_id)
       : ptr_(std::make_shared<Chunk>(data, dev_id)), shape_(data.shape_),
         dtype_(data.type_flag_), entry_({nullptr, 0, 0}) {
-#if MKL_EXPERIMENTAL == 1
-    Mkl_mem_ = std::make_shared<MKLMemHolder>();
-#endif
   }
 
   /*!
@@ -187,9 +179,6 @@ class NDArray {
           const TBlob &data, const std::vector<TBlob> &aux_data, int dev_id)
       : ptr_(std::make_shared<Chunk>(stype, data, aux_data, dev_id)), shape_(shape),
         dtype_(data.type_flag_), entry_({nullptr, 0, 0}) {
-#if MKL_EXPERIMENTAL == 1
-    Mkl_mem_ = std::make_shared<MKLMemHolder>();
-#endif
   }
 
 
@@ -274,9 +263,6 @@ class NDArray {
             << "Unexpected storage type: " << stype;
       res = TBlob(dptr, shape, ptr_->aux_handles[i].ctx.dev_mask(), type);
     });
-#if MKL_EXPERIMENTAL == 1
-    res.Mkl_mem_ = Mkl_mem_;
-#endif
     return res;
   }
   /*!
@@ -512,12 +498,6 @@ class NDArray {
     CHECK_GE(shape_.Size() * mshadow::mshadow_sizeof(dtype_),
              shape.Size() * mshadow::mshadow_sizeof(dtype))
         << "NDArray.AsArray: target memory size is bigger";
-#if MKL_EXPERIMENTAL == 1
-    if (Mkl_mem_ != nullptr) {
-      // convert prv to cpu
-      Mkl_mem_->check_and_prv_to_cpu(ptr_->shandle.dptr);
-    }
-#endif
     NDArray ret = *this;
     ret.shape_ = shape;
     ret.dtype_ = dtype;
@@ -589,6 +569,21 @@ class NDArray {
              << "CheckAndAllocAuxData is not intended for kDefaultStorage";
     ptr_->CheckAndAllocAuxData(i, aux_shape);
   }
+
+#if MXNET_USE_MKLDNN == 1
+  std::shared_ptr<const mkldnn::memory> GetMKLDNNData() const;
+  std::shared_ptr<const mkldnn::memory> GetMKLDNNData(
+      const mkldnn::memory::primitive_desc &desc,
+      std::vector<mkldnn::primitive> &net) const;
+  std::shared_ptr<mkldnn::memory> GetMKLDNNData();
+  std::shared_ptr<mkldnn::memory> GetMKLDNNData(
+      const mkldnn::memory::primitive_desc &desc,
+      std::vector<mkldnn::primitive> &net);
+
+  std::shared_ptr<mkldnn::memory> CreateMKLDNNData(
+      const mkldnn::memory::primitive_desc &desc);
+#endif
+
   /*!
    * \brief Save list of ndarray into the Stream.x
    * \param fo The stream of output.
@@ -843,6 +838,11 @@ class NDArray {
     }
   };  // struct Chunk
 
+#if MXNET_USE_MKLDNN == 1
+  // Have MKL memory reference to the data in TBlob.
+  void SetMKLMem();
+#endif
+
   void SetTBlob() const {
     CHECK(ptr_ != nullptr);
     TShape shape = shape_;
@@ -851,6 +851,7 @@ class NDArray {
     if (stype == kDefaultStorage) {
       dptr += byte_offset_;
     } else if (stype == kCSRStorage || stype == kRowSparseStorage) {
+      CHECK_NE(byte_offset_, 0);
       shape = storage_shape();
     } else {
       LOG(FATAL) << "unknown storage type " << stype;
@@ -859,13 +860,10 @@ class NDArray {
     tblob_.shape_ = shape;
     tblob_.type_flag_ = dtype_;
     tblob_.SetDLTensor(ptr_->shandle.ctx.dev_mask(), ptr_->shandle.ctx.dev_id);
-#if MKL_EXPERIMENTAL == 1
-    tblob_.Mkl_mem_ = Mkl_mem_;
-#endif
   }
 
-#if MKL_EXPERIMENTAL == 1
-  std::shared_ptr<MKLMemHolder> Mkl_mem_;
+#if MXNET_USE_MKLDNN == 1
+  std::shared_ptr<mkldnn::memory> Mkl_mem_;
 #endif
   /*! \brief internal data of NDArray */
   std::shared_ptr<Chunk> ptr_{nullptr};
