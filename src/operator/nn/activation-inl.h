@@ -96,6 +96,61 @@ ActivationOp<xpu, ForwardOp, BackwardOp, DType> &get_activation_op() {
 }
 
 template<typename xpu>
+void _ActivationCompute(const ActivationParam &param, const OpContext &ctx,
+    const TBlob &input, OpReqType req, const TBlob &output) {
+  MSHADOW_REAL_TYPE_SWITCH(input.type_flag_, DType, {
+    switch (param.act_type) {
+      case activation::kReLU:
+        get_activation_op<xpu, mshadow_op::relu, mshadow_op::relu_grad, DType>().Forward(
+            ctx, input, req, output);
+        break;
+      case activation::kSigmoid:
+        get_activation_op<xpu, mshadow_op::sigmoid, mshadow_op::sigmoid_grad, DType>().Forward(
+            ctx, input, req, output);
+        break;
+      case activation::kTanh:
+        get_activation_op<xpu, mshadow_op::tanh, mshadow_op::tanh_grad, DType>().Forward(
+            ctx, input, req, output);
+        break;
+      case activation::kSoftReLU:
+        get_activation_op<xpu, mshadow_op::softrelu, mshadow_op::softrelu_grad, DType>().Forward(
+            ctx, input, req, output);
+        break;
+      default:
+        LOG(FATAL) << "unknown activation type";
+    }
+  });
+}
+
+template<typename xpu>
+void _ActivationGradCompute(const ActivationParam &param, const OpContext &ctx,
+    const TBlob &out_grad, const TBlob &out_data, OpReqType req,
+    const TBlob &output) {
+  MSHADOW_REAL_TYPE_SWITCH(out_grad.type_flag_, DType, {
+    switch (param.act_type) {
+      case activation::kReLU:
+        get_activation_op<xpu, mshadow_op::relu, mshadow_op::relu_grad, DType>().Backward(
+            ctx, out_grad, out_data, req, output);
+        break;
+      case activation::kSigmoid:
+        get_activation_op<xpu, mshadow_op::sigmoid, mshadow_op::sigmoid_grad, DType>().Backward(
+            ctx, out_grad, out_data, req, output);
+        break;
+      case activation::kTanh:
+        get_activation_op<xpu, mshadow_op::tanh, mshadow_op::tanh_grad, DType>().Backward(
+            ctx, out_grad, out_data, req, output);
+        break;
+      case activation::kSoftReLU:
+        get_activation_op<xpu, mshadow_op::softrelu, mshadow_op::softrelu_grad, DType>().Backward(
+            ctx, out_grad, out_data, req, output);
+        break;
+      default:
+        LOG(FATAL) << "unknown activation type";
+    }
+  });
+}
+
+template<typename xpu>
 void ActivationCompute(const nnvm::NodeAttrs& attrs,
     const OpContext& ctx,
     const std::vector<TBlob>& inputs,
@@ -104,28 +159,7 @@ void ActivationCompute(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(inputs.size(), 1U);
   CHECK_EQ(outputs.size(), 1U);
   const ActivationParam& param = nnvm::get<ActivationParam>(attrs.parsed);
-  MSHADOW_REAL_TYPE_SWITCH(inputs[0].type_flag_, DType, {
-    switch (param.act_type) {
-      case activation::kReLU:
-        get_activation_op<xpu, mshadow_op::relu, mshadow_op::relu_grad, DType>().Forward(
-            ctx, inputs[0], req[0], outputs[0]);
-        break;
-      case activation::kSigmoid:
-        get_activation_op<xpu, mshadow_op::sigmoid, mshadow_op::sigmoid_grad, DType>().Forward(
-            ctx, inputs[0], req[0], outputs[0]);
-        break;
-      case activation::kTanh:
-        get_activation_op<xpu, mshadow_op::tanh, mshadow_op::tanh_grad, DType>().Forward(
-            ctx, inputs[0], req[0], outputs[0]);
-        break;
-      case activation::kSoftReLU:
-        get_activation_op<xpu, mshadow_op::softrelu, mshadow_op::softrelu_grad, DType>().Forward(
-            ctx, inputs[0], req[0], outputs[0]);
-        break;
-      default:
-        LOG(FATAL) << "unknown activation type";
-    }
-  });
+  _ActivationCompute<xpu>(param, ctx, inputs[0], req[0], outputs[0]);
 }
 
 template<typename xpu>
@@ -142,28 +176,7 @@ void ActivationGradCompute(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(outputs.size(), 1U);
   CHECK_EQ(req.size(), 1U);
   const ActivationParam& param = nnvm::get<ActivationParam>(attrs.parsed);
-  MSHADOW_REAL_TYPE_SWITCH(inputs[0].type_flag_, DType, {
-    switch (param.act_type) {
-      case activation::kReLU:
-        get_activation_op<xpu, mshadow_op::relu, mshadow_op::relu_grad, DType>().Backward(
-            ctx, inputs[0], inputs[1], req[0], outputs[0]);
-        break;
-      case activation::kSigmoid:
-        get_activation_op<xpu, mshadow_op::sigmoid, mshadow_op::sigmoid_grad, DType>().Backward(
-            ctx, inputs[0], inputs[1], req[0], outputs[0]);
-        break;
-      case activation::kTanh:
-        get_activation_op<xpu, mshadow_op::tanh, mshadow_op::tanh_grad, DType>().Backward(
-            ctx, inputs[0], inputs[1], req[0], outputs[0]);
-        break;
-      case activation::kSoftReLU:
-        get_activation_op<xpu, mshadow_op::softrelu, mshadow_op::softrelu_grad, DType>().Backward(
-            ctx, inputs[0], inputs[1], req[0], outputs[0]);
-        break;
-      default:
-        LOG(FATAL) << "unknown activation type";
-    }
-  });
+  _ActivationGradCompute<xpu>(param, ctx, inputs[0], inputs[1], req[0], outputs[0]);
 }
 
 }  // namespace op
