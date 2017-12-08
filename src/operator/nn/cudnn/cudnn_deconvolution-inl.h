@@ -216,7 +216,7 @@ class CuDNNDeconvolutionOp {
     DType *data_ptr = NULL;
     DType *gdata_ptr = NULL;
     CHECK_EQ(out_grad.size(), 1U);
-    CHECK_EQ(in_data.size(), 2U);
+    CHECK_EQ(in_data.size(), param_.no_bias ? 2U : 3U);
     CHECK_EQ(in_grad.size(), expected);
     Stream<gpu> *s = ctx.get_stream<gpu>();
     if (param_.kernel.ndim() == 2) {
@@ -247,6 +247,7 @@ class CuDNNDeconvolutionOp {
       CHECK_NE(req[deconv::kBias], kWriteInplace);
     }
     CHECK_NE(req[deconv::kData], kWriteInplace);
+    GetTempSize(ctx);
     Tensor<gpu, 1, DType> workspace = AllocateTempWorkspace(ctx, backward_workspace_byte_);
     size_t workspace_size = TensorSizeBytes(workspace);
     for (uint32_t g = 0; g < param_.num_group; ++g) {
