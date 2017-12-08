@@ -153,23 +153,12 @@ void ConcatComputeExCPU(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(req.size(), 1U);
   if (req[0] == kNullOp) return;
 #if MXNET_USE_MKLDNN == 1
-<<<<<<< HEAD
   // MKLDNN support 2D and 4D concat
   if (inputs[0].shape().ndim() == 2 || inputs[0].shape().ndim() == 4) {
     if (inputs[0].dtype() == mshadow::kFloat32) {
       MKLDNNConcat_Forward(attrs, op_ctx, inputs, req, outputs);
     }
   } else {
-=======
-  //MKLDNN support 2D and 4D concat
-  if (inputs[0].shape().ndim() == 2 || inputs[0].shape().ndim() == 4) {
-    if(inputs[0].dtype() == mshadow::kFloat32) { 
-      MKLDNNConcat_Forward(attrs, op_ctx, inputs, req, outputs);
-    }
-  }
-  else {
-    // TODO I need to convert format.
->>>>>>> fca247d7db3ef8fc3e27dba030d6cb4d32d5fed0
     std::vector<TBlob> in_blobs(inputs.size());
     for (size_t i = 0; i < in_blobs.size(); i++)
       in_blobs[i] = inputs[i].data();
@@ -186,19 +175,10 @@ static void ConcatGradComputeExCPU(const nnvm::NodeAttrs& attrs,
     const std::vector<OpReqType>& req, const std::vector<NDArray>& outputs) {
 #if MXNET_USE_MKLDNN == 1
   if (inputs[0].shape().ndim() == 2 || inputs[0].shape().ndim() == 4) {
-<<<<<<< HEAD
     if (inputs[0].dtype() == mshadow::kFloat32) {
       MKLDNNConcat_Backward(attrs, ctx, inputs, req, outputs);
     }
   } else {
-=======
-    if(inputs[0].dtype() == mshadow::kFloat32) { 
-      MKLDNNConcat_Backward(attrs, ctx, inputs, req, outputs);
-    }
-  }
-  else {
-    // TODO I need to convert format.
->>>>>>> fca247d7db3ef8fc3e27dba030d6cb4d32d5fed0
     std::vector<TBlob> in_blobs(1);
     in_blobs[0] = inputs[0].data();
     std::vector<TBlob> out_blobs(outputs.size());
