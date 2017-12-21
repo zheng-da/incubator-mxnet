@@ -177,7 +177,7 @@ void MKLDNNConvolutionForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx
   auto data_mem = in_data[conv::kData].GetMKLDNNDataReorder(fwd_pd.src_primitive_desc());
   auto engine = CpuEngine::Get()->get_engine();
   auto weight_mem = GetWeights(in_data[conv::kWeight],
-      fwd_pd.weights_primitive_desc(), param.num_group);
+      fwd_pd.weights_primitive_desc(), param.num_group, !ctx.is_train);
   auto out_mem = CreateMKLDNNMem(out_data[conv::kOut],
       fwd_pd.dst_primitive_desc(), req[conv::kOut]);
 
