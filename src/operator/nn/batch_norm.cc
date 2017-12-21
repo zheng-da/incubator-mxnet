@@ -399,6 +399,7 @@ static inline bool similar_array(const mxnet::NDArray &arr1,
   return true;
 }
 
+#if MXNET_USE_MKLDNN == 1
 static inline bool SupportMKLDNNBN(const NDArray &input, const BatchNormParam &param) {
   TShape shape = input.shape();
   bool support = input.storage_type() == kMKLDNNStorage && shape.ndim() == 4
@@ -413,6 +414,7 @@ static inline bool SupportMKLDNNBN(const NDArray &input, const BatchNormParam &p
   }
   return support;
 }
+#endif
 
 void BatchNormCompute_CPU(const nnvm::NodeAttrs &attrs,
                           const OpContext &ctx,
@@ -428,7 +430,7 @@ void BatchNormCompute_CPU(const nnvm::NodeAttrs &attrs,
 
     switch (inputs[0].dtype()) {
       case mshadow::kFloat32:
-        MKLDNNBatchNorm_Forward<float>(ctx, param, in_data, req, outputs, aux_states);
+        MKLDNNBatchNormForward<float>(ctx, param, in_data, req, outputs, aux_states);
         return;
     }
   }
@@ -470,8 +472,8 @@ void BatchNormGradCompute_CPU(const nnvm::NodeAttrs &attrs,
     std::vector<NDArray> in_grad(outputs.begin(), outputs.begin() + 3);
 
     if (inputs[0].dtype() == mshadow::kFloat32) {
-      MKLDNNBatchNorm_Backward<float>(ctx, param, out_grad, in_data,
-                                      out_data, req, in_grad, aux_states);
+      MKLDNNBatchNormBackward<float>(ctx, param, out_grad, in_data,
+                                     out_data, req, in_grad, aux_states);
       return;
     }
   }
