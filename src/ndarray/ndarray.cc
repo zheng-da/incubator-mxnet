@@ -441,11 +441,6 @@ bool NDArray::IsMKLDNNDefault() const {
   }
 }
 
-void NDArray::SaveMKLDNNReorder(std::shared_ptr<mkldnn::memory> reorder) const {
-  if (ptr_)
-    ptr_->Mkl_reorder_ = reorder;
-}
-
 void NDArray::Chunk::SetMKLMem(const TShape &shape, int dtype) {
   // The shape of the array and the one of the MKL memory may mismatch.
   // For example, if the array stores parameters, the MKL memory may store data

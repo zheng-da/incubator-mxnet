@@ -80,11 +80,8 @@ void CommitOutput(const NDArray &arr, const mkldnn_output_t &res) {
 
 const mkldnn::memory *GetWeights(const NDArray &arr,
                                  const mkldnn::memory::primitive_desc &target_pd,
-                                 int num_groups, bool save_reorder) {
-  const mkldnn::memory *mem = arr.GetMKLDNNReorder();
-  if (mem != nullptr)
-    return mem;
-
+                                 int num_groups) {
+  const mkldnn::memory *mem;
   mkldnn::memory::data_type type = get_mkldnn_type(arr.dtype());
   auto engine = CpuEngine::Get()->get_engine();
   if (arr.shape().ndim() == 2) {
@@ -121,16 +118,9 @@ const mkldnn::memory *GetWeights(const NDArray &arr,
   }
   if (mem->get_primitive_desc() == target_pd) return mem;
 
-  if (save_reorder) {
-    std::shared_ptr<mkldnn::memory> ret(new mkldnn::memory(target_pd));
-    MKLDNNStream::Get()->RegisterPrim(mkldnn::reorder(*mem, *ret));
-    arr.SaveMKLDNNReorder(ret);
-    return ret.get();
-  } else {
-    auto ret = TmpMemMgr::Get()->Alloc(target_pd);
-    MKLDNNStream::Get()->RegisterPrim(mkldnn::reorder(*mem, *ret));
-    return ret;
-  }
+  auto ret = TmpMemMgr::Get()->Alloc(target_pd);
+  MKLDNNStream::Get()->RegisterPrim(mkldnn::reorder(*mem, *ret));
+  return ret;
 }
 
 const mkldnn::memory *GetWeights(const NDArray &arr,

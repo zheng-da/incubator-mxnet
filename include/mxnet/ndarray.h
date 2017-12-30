@@ -558,13 +558,6 @@ class NDArray {
 
 #if MXNET_USE_MKLDNN == 1
   bool IsMKLDNNDefault() const;
-  void SaveMKLDNNReorder(std::shared_ptr<mkldnn::memory> reorder) const;
-  const mkldnn::memory *GetMKLDNNReorder() const {
-    if (ptr_ != nullptr)
-      return ptr_->Mkl_reorder_.get();
-    else
-      return nullptr;
-  }
   /*
    * All functions below return a raw pointer to mkldnn memory. Actually there
    * is a shared pointer that hold the memory either in NDArray or in MKLDNN
@@ -640,11 +633,6 @@ class NDArray {
     /*! This is created when data is stored in MKLDNN format.
      */
     std::shared_ptr<mkldnn::memory> Mkl_mem_;
-    /*
-     * This contains a copy of the original data. However, the data in this
-     * member may be out of date. TODO(zhengda) we should fix this problem.
-     */
-    std::shared_ptr<mkldnn::memory> Mkl_reorder_;
 #endif
     /*! \brief variable from engine */
     Engine::VarHandle var;

@@ -164,7 +164,7 @@ void MKLDNNDeconvolutionForward(const nnvm::NodeAttrs& attrs, const OpContext &c
   auto data_mem = in_data[deconv::kData].GetMKLDNNDataReorder(
       deconvFwd_pd.diff_dst_primitive_desc());
   auto weight_mem = GetWeights(in_data[deconv::kWeight],
-      deconvFwd_pd.weights_primitive_desc(), param.num_group, !ctx.is_train);
+      deconvFwd_pd.weights_primitive_desc(), param.num_group);
   auto out_mem = CreateMKLDNNMem(out_data[deconv::kOut],
       deconvFwd_pd.diff_src_primitive_desc(), req[deconv::kOut]);
 
