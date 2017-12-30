@@ -18,9 +18,9 @@
  */
 
 /*!
- * \file mkldnn_batch_norm.cc
+ * \file mkldnn_batch_norm-inl.h
  * \brief
- * \author Tao Lv
+ * \author Tao Lv (tao.a.lv@intel.com)
 */
 
 #ifndef MXNET_OPERATOR_NN_MKLDNN_MKLDNN_BATCH_NORM_INL_H_
@@ -28,6 +28,7 @@
 
 #if MXNET_USE_MKLDNN == 1
 #include <vector>
+#include <utility>
 #include <mkldnn.hpp>
 #include "../batch_norm-inl.h"
 #include "./mkldnn_ops-inl.h"
@@ -42,6 +43,7 @@ typedef mkldnn::batch_normalization_forward::primitive_desc     t_bn_f_pdesc;
 typedef mkldnn::batch_normalization_forward::desc               t_bn_f_desc;
 typedef mkldnn::batch_normalization_backward::primitive_desc    t_bn_b_pdesc;
 typedef mkldnn::batch_normalization_backward::desc              t_bn_b_desc;
+typedef MKLDNNParamOpSign<BatchNormParam>                       MKLDNNBNSignature;
 
 using mkldnn::use_global_stats;
 using mkldnn::use_scale_shift;
@@ -56,8 +58,6 @@ inline static unsigned _GetFlags(const std::vector<NDArray> &in_data,
     flags |= use_scale_shift;
   }
 
-  // aux_states[0]: inMean
-  // aux_states[1]: inVariance
   if (aux_states.size() == 2U && !is_train) {
     flags |= use_global_stats;
   }
@@ -98,115 +98,246 @@ inline static t_bn_b_pdesc _GetBwd(const mkldnn::memory &data_mem,
 }
 
 template <typename DType>
+class MKLDNNBNForward {
+ public:
+  MKLDNNBNForward(const mxnet::NDArray &data, DType eps,
+                  bool is_train, bool scale_shift,
+                  bool global_stats, bool fix_gamma) :
+                  _out_mean(nullptr), _out_var(nullptr),
+                  _flag(0U), _fix_gamma(fix_gamma), _is_train(is_train),
+                  _channels(data.shape()[1]), _eps(eps),
+                  fwd(nullptr), data(nullptr), weight(nullptr),
+                  out(nullptr), mean(nullptr), variance(nullptr) {
+    _Init(data, scale_shift, global_stats);
+  }
+
+  ~MKLDNNBNForward() {}
+
+  void SetDataHandle(const std::vector<OpReqType> &req,
+                     const mxnet::NDArray         &data,
+                     const mxnet::NDArray         &output,
+                     const mxnet::TBlob           &moving_mean,
+                     const mxnet::TBlob           &moving_var,
+                     const mxnet::TBlob           &out_mean,
+                     const mxnet::TBlob           &out_var,
+                     const mxnet::TBlob           *gamma        = nullptr,
+                     const mxnet::TBlob           *beta         = nullptr);
+
+  void Execute();
+
+ private:
+  DType *_out_mean;
+  DType *_out_var;
+  unsigned _flag;
+  bool _fix_gamma;
+  bool _is_train;
+  nnvm::dim_t _channels;
+  DType _eps;
+
+  std::shared_ptr<mkldnn::batch_normalization_forward> fwd;
+  std::shared_ptr<mkldnn::memory> data;
+  std::shared_ptr<mkldnn::memory> weight;
+  std::shared_ptr<mkldnn::memory> out;
+  std::shared_ptr<mkldnn::memory> mean;
+  std::shared_ptr<mkldnn::memory> variance;
+
+ private:
+  void _Init(const mxnet::NDArray &data, bool scale_shift, bool global_stats);
+  void _SetWeight(const mxnet::TBlob &gamma,
+                  const mxnet::TBlob &beta,
+                  const OpReqType    &req);
+  void _SetMeanVar(const DType *imean,
+                   const DType *ivar,
+                   DType *omean,
+                   DType *ovar);
+};
+
+template <typename DType>
+void MKLDNNBNForward<DType>::_Init(const mxnet::NDArray &src, bool scale_shift, bool global_stats) {
+    this->_flag |= scale_shift ? use_scale_shift : 0U;
+    this->_flag |= global_stats ? use_global_stats : 0U;
+
+    auto src_md = src.GetMKLDNNData()->get_primitive_desc().desc();
+    auto engine = CpuEngine::Get()->get_engine();
+
+    mkldnn::prop_kind prop = forward_training;
+    if (this->_is_train) {
+        prop = forward_training;
+    } else {
+        prop = forward_inference;
+    }
+
+    auto fwd_desc = t_bn_f_desc(prop, src_md, this->_eps, this->_flag);
+    auto fwd_pd   = t_bn_f_pdesc(fwd_desc, engine);
+
+    this->data.reset(new mkldnn::memory(src.GetMKLDNNData()->get_primitive_desc()));
+    this->out.reset(new mkldnn::memory(fwd_pd.dst_primitive_desc()));
+
+    if (this->_flag & use_scale_shift) {
+        this->weight.reset(new memory(fwd_pd.weights_primitive_desc()));
+    }
+
+    if (this->_is_train || (this->_flag & use_global_stats)) {
+        this->mean.reset(new mkldnn::memory(fwd_pd.mean_primitive_desc()));
+        this->variance.reset(new mkldnn::memory(fwd_pd.variance_primitive_desc()));
+    }
+
+    // for mxnet, there always has weight
+    CHECK_EQ(this->_flag & use_scale_shift, use_scale_shift);
+    if (!(this->_is_train)) {
+        this->fwd.reset(
+                new mkldnn::batch_normalization_forward(fwd_pd,
+                                                        *(this->data),
+                                                        mkldnn::primitive::at(*(this->mean)),
+                                                        mkldnn::primitive::at(*(this->variance)),
+                                                        mkldnn::primitive::at(*(this->weight)),
+                                                        *(this->out)));
+    } else {
+        this->fwd.reset(
+                new mkldnn::batch_normalization_forward(fwd_pd,
+                                                        *(this->data),
+                                                        mkldnn::primitive::at(*(this->weight)),
+                                                        *(this->out),
+                                                        *(this->mean),
+                                                        *(this->variance)));
+    }
+    return;
+}
+
+template <typename DType>
+void MKLDNNBNForward<DType>::SetDataHandle(const std::vector<OpReqType> &req,
+                                           const mxnet::NDArray         &data,
+                                           const mxnet::NDArray         &output,
+                                           const mxnet::TBlob           &moving_mean,
+                                           const mxnet::TBlob           &moving_var,
+                                           const mxnet::TBlob           &out_mean,
+                                           const mxnet::TBlob           &out_var,
+                                           const mxnet::TBlob           *gamma,
+                                           const mxnet::TBlob           *beta) {
+    auto data_mem = data.GetMKLDNNData();
+    auto out_mem = const_cast<NDArray&>(output).CreateMKLDNNData(this->out->get_primitive_desc());
+    this->data->set_data_handle(data_mem->get_data_handle());
+    this->out->set_data_handle(out_mem->get_data_handle());
+
+    // weights
+    if (gamma != nullptr && beta != nullptr && (this->_flag | use_scale_shift)) {
+      _SetWeight(*gamma, *beta, req[batchnorm::kGamma]);
+    }
+
+    // mean and variance
+    this->_out_mean = out_mean.dptr<DType>();
+    this->_out_var  = out_var.dptr<DType>();
+    if (!(this->_is_train)) {
+      this->mean->set_data_handle(moving_mean.dptr<DType>());
+      this->variance->set_data_handle(moving_var.dptr<DType>());
+    } else {
+      this->mean->set_data_handle(this->_out_mean);
+      this->variance->set_data_handle(this->_out_var);
+    }
+}
+
+template <typename DType>
+void MKLDNNBNForward<DType>::Execute() {
+    if (!(this->_is_train)) {
+      MKLDNNStream::Get()->RegisterPrim(*(this->fwd));
+      MKLDNNStream::Get()->Submit();
+      _SetMeanVar(reinterpret_cast<DType*>(this->mean->get_data_handle()),
+                  reinterpret_cast<DType*>(this->variance->get_data_handle()),
+                  this->_out_mean, this->_out_var);
+    } else {
+      MKLDNNStream::Get()->RegisterPrim(*(this->fwd));
+      MKLDNNStream::Get()->Submit();
+      _SetMeanVar(reinterpret_cast<DType*>(this->mean->get_data_handle()),
+                  reinterpret_cast<DType*>(this->variance->get_data_handle()),
+                  this->_out_mean, this->_out_var);
+    }
+}
+
+template <typename DType>
+void MKLDNNBNForward<DType>::_SetWeight(const mxnet::TBlob &gamma,
+                                        const mxnet::TBlob &beta,
+                                        const OpReqType    &req) {
+    // CHECK_NE(this->weight, nullptr);
+    DType *gamma_ptr  = gamma.dptr<DType>();
+    DType *beta_ptr   = beta.dptr<DType>();
+    DType *weight_ptr = reinterpret_cast<DType*>(this->weight->get_data_handle());
+
+    if (!(this->_fix_gamma)) {
+#pragma omp parallel for simd
+      for (int i = 0; i < this->_channels; i++) {
+        weight_ptr[i] = gamma_ptr[i];
+        weight_ptr[this->_channels + i] = beta_ptr[i];  // bias
+      }
+    } else if (IsBNWriting(req)) {
+#pragma omp parallel for simd
+      for (int i = 0; i < this->_channels; i++) {
+        weight_ptr[i] = (DType)1.0f;
+        weight_ptr[this->_channels + i] = beta_ptr[i];  // bias
+        gamma_ptr[i] = (DType)1.0f;
+      }
+    } else {
+#pragma omp parallel for simd
+      for (int i = 0; i < this->_channels; i++) {
+        weight_ptr[i] = (DType)1.0f;
+        weight_ptr[this->_channels + i] = beta_ptr[i];  // bias
+      }
+    }
+}
+
+template <typename DType>
+void MKLDNNBNForward<DType>::_SetMeanVar(const DType *imean,
+                                         const DType *ivar,
+                                         DType *omean,
+                                         DType *ovar) {
+#pragma omp parallel for simd
+    for (int i = 0; i < this->_channels; i++) {
+      omean[i] = imean[i];
+      ovar[i] = VARIANCE_TO_INVSTD(ivar[i], this->_eps);
+    }
+}
+
+template <typename DType>
+static inline MKLDNNBNForward<DType> &GetBNFwd(const BatchNormParam &param,
+                                               bool is_train,
+                                               const NDArray &data) {
+  static thread_local std::unordered_map<MKLDNNBNSignature,
+                                         MKLDNNBNForward<DType>,
+                                         MKLDNNOpHash> fwds;
+  MKLDNNBNSignature key(param);
+  key.AddSign(is_train);
+  key.AddSign(data);
+
+  auto it = fwds.find(key);
+  if (it == fwds.end()) {
+    MKLDNNBNForward<DType> fwd(data, param.eps, is_train, true,
+                               param.use_global_stats, param.fix_gamma);
+    auto ins_ret = fwds.insert(std::pair<MKLDNNBNSignature, MKLDNNBNForward<DType> >(key, fwd));
+    CHECK(ins_ret.second);
+    it = ins_ret.first;
+  }
+  return it->second;
+}
+
+template <typename DType>
 void MKLDNNBatchNormForward(const OpContext &ctx, const BatchNormParam &param,
                             const std::vector<NDArray>   &in_data,
                             const std::vector<OpReqType> &req,
                             const std::vector<NDArray>   &out_data,
                             const std::vector<NDArray>   &aux_states) {
   TmpMemMgr::Get()->Init(ctx.requested[batchnorm::kTempSpace]);
-  unsigned flags      = _GetFlags(in_data, aux_states, param, ctx.is_train);
-  const NDArray &data = in_data[batchnorm::kData];
+  const NDArray &data  = in_data[batchnorm::kData];
+  auto gamma           = in_data[batchnorm::kGamma].data();
+  auto beta            = in_data[batchnorm::kBeta].data();
+  auto moving_mean     = aux_states[batchnorm::kMovingMean].data();
+  auto moving_var      = aux_states[batchnorm::kMovingVar].data();
+  const NDArray &out   = out_data[batchnorm::kOut];
+  auto out_mean        = out_data[batchnorm::kMean].data();
+  auto out_var         = out_data[batchnorm::kVar].data();
 
-  auto data_mem       = data.GetMKLDNNData();
-  auto fwd_pd         = _GetFwd(*data_mem, ctx.is_train, (DType) param.eps, flags);
-  const NDArray &out  = out_data[batchnorm::kOut];
-
-  // for output memory
-  auto out_mem = const_cast<NDArray &>(out).CreateMKLDNNData(fwd_pd.dst_primitive_desc());
-
-  // mxnet will always use scale shift.
-  // But if fix_gamma is true, then all scale elements will be set to 1.0f
-  if (flags & use_scale_shift) {
-    const NDArray &gamma    = in_data[batchnorm::kGamma];
-    const NDArray &beta     = in_data[batchnorm::kBeta];
-    CHECK_EQ(gamma.storage_type(), mxnet::kDefaultStorage);
-    CHECK_EQ(beta.storage_type(), mxnet::kDefaultStorage);
-
-    // TODO(tao): how to reuse this memory?
-    std::shared_ptr<const mkldnn::memory> weight_mem(
-                        new mkldnn::memory(fwd_pd.weights_primitive_desc()));
-    DType* weight_buf = reinterpret_cast<DType *>(weight_mem->get_data_handle());
-
-    nnvm::dim_t channels_ = data.shape()[1];
-    DType* weight_ptr = gamma.data().dptr<DType>();
-    DType* bias_ptr = beta.data().dptr<DType>();
-    if (!param.fix_gamma) {
-#pragma omp parallel for simd
-      for (int i = 0; i < channels_; i++) {
-        weight_buf[i] = weight_ptr[i];
-        weight_buf[channels_ + i] = bias_ptr[i];  // bias
-      }
-    } else if (IsBNWriting(req[batchnorm::kGamma])) {
-#pragma omp parallel for simd
-      for (int i = 0; i < channels_; i++) {
-        weight_buf[i] = (DType)1.0f;
-        weight_ptr[i] = (DType)1.0f;
-        weight_buf[channels_ + i] = bias_ptr[i];  // bias
-      }
-    } else {
-#pragma omp parallel for simd
-      for (int i = 0; i < channels_; i++) {
-        weight_buf[i] = (DType)1.0f;
-        weight_buf[channels_ + i] = bias_ptr[i];  // bias
-      }
-    }
-
-    if (!ctx.is_train) {
-      DType* omean    = out_data[batchnorm::kMean].data().dptr<DType>();
-      DType* ovar     = out_data[batchnorm::kVar].data().dptr<DType>();
-      DType* inmean   = aux_states[batchnorm::kMovingMean].data().dptr<DType>();
-      DType* invar    = aux_states[batchnorm::kMovingVar].data().dptr<DType>();
-      // to align with origin implmentation: batch_norm.cc: L164
-#pragma omp parallel for simd
-      for (int i = 0; i < channels_; i++) {
-        omean[i] = inmean[i];
-        ovar[i] = VARIANCE_TO_INVSTD(invar[i], param.eps);
-      }
-
-      std::shared_ptr<const mkldnn::memory> mean_m(
-                      new mkldnn::memory(fwd_pd.mean_primitive_desc(), inmean));
-      std::shared_ptr<const mkldnn::memory> var_m(
-                      new mkldnn::memory(fwd_pd.variance_primitive_desc(), invar));
-      auto bn = mkldnn::batch_normalization_forward(fwd_pd,
-                                                    *data_mem,
-                                                    mkldnn::primitive::at(*mean_m),
-                                                    mkldnn::primitive::at(*var_m),
-                                                    *weight_mem,
-                                                    *out_mem);
-      MKLDNNStream::Get()->RegisterPrim(bn);
-      MKLDNNStream::Get()->Submit();
-    } else {  // training
-      const NDArray &outMean  = out_data[batchnorm::kMean];
-      const NDArray &outVar   = out_data[batchnorm::kVar];
-      CHECK_EQ(outMean.storage_type(), mxnet::kDefaultStorage);
-      CHECK_EQ(outVar.storage_type(), mxnet::kDefaultStorage);
-      DType* omean    = out_data[batchnorm::kMean].data().dptr<DType>();
-      DType* ovar     = out_data[batchnorm::kVar].data().dptr<DType>();
-
-      std::shared_ptr<const mkldnn::memory> mean_mem(
-                      new mkldnn::memory(fwd_pd.mean_primitive_desc(), omean));
-      std::shared_ptr<const mkldnn::memory> var_mem(
-                      new mkldnn::memory(fwd_pd.variance_primitive_desc(), ovar));
-
-      auto bn = mkldnn::batch_normalization_forward(fwd_pd,
-                                                    mkldnn::primitive::at(*data_mem),
-                                                    mkldnn::primitive::at(*weight_mem),
-                                                    *out_mem,
-                                                    *mean_mem,
-                                                    *var_mem);
-      MKLDNNStream::Get()->RegisterPrim(bn);
-      MKLDNNStream::Get()->Submit();
-      DType* mean_mem_ptr = reinterpret_cast<DType*>(mean_mem->get_data_handle());
-      DType* var_mem_ptr  = reinterpret_cast<DType*>(var_mem->get_data_handle());
-#pragma omp parallel for simd
-      for (int i = 0; i < channels_; i++) {
-        omean[i] = mean_mem_ptr[i];
-        ovar[i]  = VARIANCE_TO_INVSTD(var_mem_ptr[i], param.eps);
-      }
-    }
-  } else {  // no input gamma and beta
-      LOG(FATAL) << "MKLDNN batch normalization: should not reach here ...";
-  }
+  MKLDNNBNForward<DType> &fwd = GetBNFwd<DType>(param, ctx.is_train, data);
+  fwd.SetDataHandle(req, data, out, moving_mean, moving_var,
+                    out_mean, out_var, &gamma, &beta);
+  fwd.Execute();
 }
 
 template <typename DType>
