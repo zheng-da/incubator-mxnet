@@ -190,6 +190,7 @@ NDArray NDArray::ReshapeMKLDNN(const TShape &shape) const {
     // when it's destroyed.
     ret.ptr_->Mkl_mem_ = std::shared_ptr<mkldnn::memory>(def_mem,
                                                          EmptyMKLDNNDeleter());
+    ret.ptr_->delay_alloc = false;
     ret.byte_offset_ = byte_offset_;
     return ret;
   }
@@ -359,6 +360,8 @@ void NDArray::Chunk::Reorder2Default() {
   CHECK(format != Mkl_mem_->get_primitive_desc().desc().data.format);
 
   CHECK(shandle.dptr == nullptr);
+  // CheckAndAlloc only allocate memroy if delay_alloc is true.
+  delay_alloc = true;
   CheckAndAlloc();
   auto def_pd = GetPrimitiveDesc(Mkl_mem_->get_primitive_desc(), format);
   mkldnn_mem_ptr def_mem(new mkldnn::memory(def_pd, shandle.dptr));
@@ -408,8 +411,10 @@ void NDArray::Chunk::SetMKLMem(const TShape &shape, int dtype) {
   }
   mkldnn::memory::desc data_md{dims, get_mkldnn_type(dtype), layout};
   auto cpu_engine = CpuEngine::Get()->get_engine();
-  if (shandle.dptr == nullptr)
+  if (shandle.dptr == nullptr) {
+    CHECK(delay_alloc);
     CheckAndAlloc();
+  }
   Mkl_mem_.reset(new mkldnn::memory(mkldnn::memory::primitive_desc(
               data_md, cpu_engine), shandle.dptr));
 }
@@ -501,7 +506,7 @@ const mkldnn::memory *NDArray::GetMKLDNNData() const {
     // Sliced array must use the default layout.
     CHECK_EQ(GetDefaultFormat(pd.desc()), pd.desc().data.format);
   }
-  if (byte_offset_ > 0) {
+  if (IsView()) {
     void *off_addr = static_cast<char *>(ptr_->Mkl_mem_->get_data_handle())
         + byte_offset_;
 
@@ -657,19 +662,17 @@ mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn::memory::primitive_desc p
                                                 mkldnn_memory_format_t format);
 
 mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::primitive_desc &desc) {
-  mkldnn::memory::primitive_desc _desc = desc;
   // This array shouldn't be a view.
   CHECK(!IsView());
-  auto required_format = _desc.desc().data.format;
-  auto def_format = GetDefaultFormat(_desc.desc());
-  if (required_format != def_format)
-    return nullptr;
 
   if (desc.get_size() != shape().Size() * GetTypeSize(dtype_)) {
     LOG(FATAL) << "The size of NDArray doesn't match the requested MKLDNN memory desc";
     return nullptr;
   }
 
+  mkldnn::memory::primitive_desc _desc = desc;
+  auto required_format = _desc.desc().data.format;
+  auto def_format = GetDefaultFormat(_desc.desc());
   // If the required format is a default format, we don't need to worry about the shape.
   // If the shape isn't the same, it actually implicitly reshapes data.
   if (required_format == def_format) {
@@ -684,6 +687,7 @@ mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::primitive_desc &
   }
 
   ptr_->Mkl_mem_.reset(new mkldnn::memory(desc));
+  ptr_->delay_alloc = false;
   MKLDNNStream::Get()->RegisterMem(ptr_->Mkl_mem_);
   return ptr_->Mkl_mem_.get();
 }
