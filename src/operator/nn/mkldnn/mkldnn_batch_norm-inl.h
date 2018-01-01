@@ -119,8 +119,8 @@ void MKLDNNBatchNormForward(const OpContext &ctx, const BatchNormParam &param,
   if (flags & use_scale_shift) {
     const NDArray &gamma    = in_data[batchnorm::kGamma];
     const NDArray &beta     = in_data[batchnorm::kBeta];
-    CHECK_EQ(gamma.storage_type(), mxnet::kDefaultStorage);
-    CHECK_EQ(beta.storage_type(), mxnet::kDefaultStorage);
+    CHECK(gamma.IsDefault());
+    CHECK(beta.IsDefault());
 
     // TODO(tao): how to reuse this memory?
     std::shared_ptr<const mkldnn::memory> weight_mem(
@@ -178,8 +178,8 @@ void MKLDNNBatchNormForward(const OpContext &ctx, const BatchNormParam &param,
     } else {  // training
       const NDArray &outMean  = out_data[batchnorm::kMean];
       const NDArray &outVar   = out_data[batchnorm::kVar];
-      CHECK_EQ(outMean.storage_type(), mxnet::kDefaultStorage);
-      CHECK_EQ(outVar.storage_type(), mxnet::kDefaultStorage);
+      CHECK(outMean.IsDefault());
+      CHECK(outVar.IsDefault());
       DType* omean    = out_data[batchnorm::kMean].data().dptr<DType>();
       DType* ovar     = out_data[batchnorm::kVar].data().dptr<DType>();
 
@@ -232,16 +232,19 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
   const NDArray &out_mean     = out_data[batchnorm::kMean];
   const NDArray &out_var      = out_data[batchnorm::kVar];
 
-  CHECK_EQ(out_mean.storage_type(), mxnet::kDefaultStorage);
-  CHECK_EQ(out_var.storage_type(), mxnet::kDefaultStorage);
-  CHECK_EQ(moving_mean.storage_type(), mxnet::kDefaultStorage);
-  CHECK_EQ(moving_var.storage_type(), mxnet::kDefaultStorage);
+  CHECK(out_mean.IsDefault());
+  CHECK(out_var.IsDefault());
+  CHECK(moving_mean.IsDefault());
+  CHECK(moving_var.IsDefault());
 
   auto data_mem  = data.GetMKLDNNData();
   auto diff_mem  = diff.GetMKLDNNData();
-  if (diff_mem->get_primitive_desc() != data_mem->get_primitive_desc()) {
+  // MKLDNN batchnorm should run on special layouts. If one of them isn't, we
+  // should reorder them.
+  if (data.IsDefault())
     data_mem = data.GetMKLDNNDataReorder(diff_mem->get_primitive_desc());
-  }
+  else if (diff.IsDefault())
+    diff_mem = diff.GetMKLDNNDataReorder(data_mem->get_primitive_desc());
   auto bwd_pd = _GetBwd(*data_mem, *diff_mem, param.eps, flags);
   auto gradi_mem = const_cast<NDArray &>(gradIn).CreateMKLDNNData(data_mem->get_primitive_desc());
 
