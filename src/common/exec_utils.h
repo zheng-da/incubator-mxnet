@@ -52,10 +52,6 @@ inline bool SetupDefaultBlobs(const std::vector<NDArray>& src,
   for (size_t i = 0; i < src.size(); i++) {
     auto& nd = src[i];
     bool is_default = nd.storage_type() == kDefaultStorage;
-#if MXNET_USE_MKLDNN == 1
-    // If this is mkldnn storage and it uses the default layout.
-    is_default = nd.IsDefault();
-#endif
     if (!is_default) {
       if (idx_map != nullptr) {
         (*idx_map)[i] = temp_dst->size();
