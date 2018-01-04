@@ -608,6 +608,12 @@ class NDArray {
     ptr_->Reorder2Default();
   }
 
+  void InvalidateData() {
+    CHECK_EQ(storage_type(), kDefaultStorage);
+    // When we invalidate data, we don't need to care about the MKLDNN format.
+    ptr_->Mkl_mem_ = nullptr;
+  }
+
   /*
    * This function is used inside operators to reshape an array.
    * It's used by FullyConnected right now.
