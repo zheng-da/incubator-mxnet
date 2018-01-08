@@ -382,23 +382,6 @@ static bool BatchNormType(const nnvm::NodeAttrs& attrs,
   return true;
 }
 
-static inline bool similar_array(const mxnet::NDArray &arr1,
-                                 const mxnet::NDArray &arr2,
-                                 float tol) {
-  float *data1 = reinterpret_cast<float *>(arr1.data().dptr_);
-  float *data2 = reinterpret_cast<float *>(arr2.data().dptr_);
-  if (arr1.shape().Size() != arr2.shape().Size())
-      return false;
-  for (size_t i = 0; i < arr1.shape().Size(); i++) {
-      if (std::abs(data1[i] - data2[i]) > tol) {
-          // printf("similar_array: %.8f, %.8f \n", data1[i], data2[i]);
-          return false;
-      }
-  }
-  std::cout << "similar_array: passed all check, tol=" << tol << std::endl;
-  return true;
-}
-
 #if MXNET_USE_MKLDNN == 1
 static inline bool SupportMKLDNNBN(const NDArray &input, const BatchNormParam &param) {
   TShape shape = input.shape();
@@ -408,11 +391,11 @@ static inline bool SupportMKLDNNBN(const NDArray &input, const BatchNormParam &p
 }
 #endif
 
-void BatchNormCompute_CPU(const nnvm::NodeAttrs &attrs,
-                          const OpContext &ctx,
-                          const std::vector<NDArray> &inputs,
-                          const std::vector<OpReqType> &req,
-                          const std::vector<NDArray> &outputs) {
+void BatchNormComputeCPU(const nnvm::NodeAttrs &attrs,
+                         const OpContext &ctx,
+                         const std::vector<NDArray> &inputs,
+                         const std::vector<OpReqType> &req,
+                         const std::vector<NDArray> &outputs) {
   CHECK_EQ(inputs.size(), 5U);
 #if MXNET_USE_MKLDNN == 1
   const BatchNormParam &param = nnvm::get<BatchNormParam>(attrs.parsed);
@@ -423,7 +406,7 @@ void BatchNormCompute_CPU(const nnvm::NodeAttrs &attrs,
 
     switch (inputs[0].dtype()) {
       case mshadow::kFloat32:
-        MKLDNNBatchNormForward<float>(ctx, param, in_data, req, outputs, aux_states);
+        MKLDNNBatchNormCompute<float>(ctx, param, in_data, req, outputs, aux_states);
         return;
     }
   }
@@ -440,11 +423,11 @@ void BatchNormCompute_CPU(const nnvm::NodeAttrs &attrs,
   BatchNormCompute<cpu>(attrs, ctx, in_blobs, req, out_blobs);
 }
 
-void BatchNormGradCompute_CPU(const nnvm::NodeAttrs &attrs,
-                              const OpContext &ctx,
-                              const std::vector<NDArray> &inputs,
-                              const std::vector<OpReqType> &req,
-                              const std::vector<NDArray> &outputs) {
+void BatchNormGradComputeCPU(const nnvm::NodeAttrs &attrs,
+                             const OpContext &ctx,
+                             const std::vector<NDArray> &inputs,
+                             const std::vector<OpReqType> &req,
+                             const std::vector<NDArray> &outputs) {
   CHECK_EQ(inputs.size(), 11U);
   const BatchNormParam &param = nnvm::get<BatchNormParam>(attrs.parsed);
   int num_out_grads = param.output_mean_var ? 3U : 1U;
@@ -466,8 +449,8 @@ void BatchNormGradCompute_CPU(const nnvm::NodeAttrs &attrs,
     std::vector<NDArray> in_grad(outputs.begin(), outputs.begin() + 3);
 
     if (inputs[0].dtype() == mshadow::kFloat32) {
-      MKLDNNBatchNormBackward<float>(ctx, param, out_grad, in_data,
-                                     out_data, req, in_grad, aux_states);
+      MKLDNNBatchNormGradCompute<float>(ctx, param, out_grad, in_data,
+                                        out_data, req, in_grad, aux_states);
       return;
     }
   }
@@ -598,7 +581,7 @@ then set ``gamma`` to 1 and its gradient to 0.
 .set_attr<nnvm::FInferType>("FInferType", BatchNormType)
 .set_attr<FInferStorageType>("FInferStorageType", BatchNormStorageType)
 .set_attr<FCompute>("FCompute<cpu>", BatchNormCompute<cpu>)
-.set_attr<FComputeEx>("FComputeEx<cpu>", BatchNormCompute_CPU)
+.set_attr<FComputeEx>("FComputeEx<cpu>", BatchNormComputeCPU)
 .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseInOut{"_backward_BatchNorm"})
 #if MXNET_USE_MKLDNN == 1
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {
@@ -633,7 +616,7 @@ NNVM_REGISTER_OP(_backward_BatchNorm)
 #endif
 .set_attr_parser(ParamParser<BatchNormParam>)
 .set_attr<FCompute>("FCompute<cpu>", BatchNormGradCompute<cpu>)
-.set_attr<FComputeEx>("FComputeEx<cpu>", BatchNormGradCompute_CPU);
+.set_attr<FComputeEx>("FComputeEx<cpu>", BatchNormGradComputeCPU);
 
 }  // namespace op
 }  // namespace mxnet
