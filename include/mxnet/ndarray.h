@@ -35,6 +35,7 @@
 #include <map>
 #include <string>
 #include <memory>
+#include <algorithm>
 #if MXNET_USE_MKLDNN == 1
 #include <mkldnn.hpp>
 #endif
@@ -139,9 +140,12 @@ class NDArray {
         dtype_(data.type_flag_), storage_type_(stype), entry_({nullptr, 0, 0}) {
   }
 
-  inline bool is_view() const {
+  inline bool IsView() const {
     // Sparse arrays don't have a view.
     if (storage_type() == kRowSparseStorage || storage_type() == kCSRStorage)
+      return false;
+    // If the array reuses memory, it's not a view.
+    if (reuse_)
       return false;
     return byte_offset_ > 0 || shape() != ptr_->storage_shape;
   }
@@ -484,9 +488,12 @@ class NDArray {
     CHECK_GE(ptr_->shandle.size,
              shape.Size() * mshadow::mshadow_sizeof(dtype))
         << "NDArray.AsArray: target memory size is bigger";
+    // We can't reuse memory in a view.
+    CHECK(!IsView());
     NDArray ret = *this;
     ret.shape_ = shape;
     ret.dtype_ = dtype;
+    ret.reuse_ = true;
     return ret;
   }
   /*!
@@ -557,13 +564,11 @@ class NDArray {
   }
 
 #if MXNET_USE_MKLDNN == 1
-  bool IsMKLDNNDefault() const;
-  void SaveMKLDNNReorder(std::shared_ptr<mkldnn::memory> reorder) const;
-  const mkldnn::memory *GetMKLDNNReorder() const {
-    if (ptr_ != nullptr)
-      return ptr_->Mkl_reorder_.get();
-    else
-      return nullptr;
+  bool IsMKLDNN() const {
+    return ptr_->IsMKLDNN();
+  }
+  bool IsDefault() const {
+    return ptr_->IsDefault();
   }
   /*
    * All functions below return a raw pointer to mkldnn memory. Actually there
@@ -593,6 +598,21 @@ class NDArray {
   void CopyFrom(const mkldnn::memory &mem);
   mkldnn::memory *CreateMKLDNNData(
       const mkldnn::memory::primitive_desc &desc);
+
+  /*
+   * Reorder the memory to the specified layout.
+   */
+  void Reorder(const mkldnn::memory::primitive_desc &desc);
+  void Reorder2Default() {
+    CHECK_EQ(storage_type(), kDefaultStorage);
+    ptr_->Reorder2Default();
+  }
+
+  void InvalidateData() {
+    CHECK_EQ(storage_type(), kDefaultStorage);
+    // When we invalidate data, we don't need to care about the MKLDNN format.
+    ptr_->Mkl_mem_ = nullptr;
+  }
 
   /*
    * This function is used inside operators to reshape an array.
@@ -640,11 +660,6 @@ class NDArray {
     /*! This is created when data is stored in MKLDNN format.
      */
     std::shared_ptr<mkldnn::memory> Mkl_mem_;
-    /*
-     * This contains a copy of the original data. However, the data in this
-     * member may be out of date. TODO(zhengda) we should fix this problem.
-     */
-    std::shared_ptr<mkldnn::memory> Mkl_reorder_;
 #endif
     /*! \brief variable from engine */
     Engine::VarHandle var;
@@ -707,7 +722,7 @@ class NDArray {
         : static_data(false), delay_alloc(false) {
       var = Engine::Get()->NewVariable();
       ctx = Context::CPUShared(0);
-      shandle.size = shape.Size() * mshadow::mshadow_sizeof(dtype);;
+      shandle.size = shape.Size() * mshadow::mshadow_sizeof(dtype);
       shandle.ctx = ctx;
       shandle.shared_pid = shared_pid;
       shandle.shared_id = shared_id;
@@ -782,6 +797,9 @@ class NDArray {
     inline void CheckAndAlloc(void) {
       if (delay_alloc) {
         shandle = Storage::Get()->Alloc(shandle.size, shandle.ctx);
+#if MXNET_USE_MKLDNN == 1
+        Mkl_mem_ = nullptr;
+#endif
         delay_alloc = false;
       }
     }
@@ -790,15 +808,22 @@ class NDArray {
     // size is the number of bytes
     void CheckAndAlloc(uint64_t dbytes) {
       CHECK_EQ(kDefaultStorage, storage_type)
-              << "CheckAndAlloc(dbytes) is not intended for kDefaultStorage";
+          << "CheckAndAlloc(dbytes) is not intended for kDefaultStorage";
+      dbytes = std::max(dbytes, shandle.size);
       if (delay_alloc) {
         shandle = Storage::Get()->Alloc(dbytes, shandle.ctx);
+#if MXNET_USE_MKLDNN == 1
+        Mkl_mem_ = nullptr;
+#endif
         delay_alloc = false;
       } else if (shandle.size < dbytes) {
         // free storage if necessary and alloc again
         if (shandle.size > 0) Storage::Get()->Free(shandle);
         // init storage
         shandle = Storage::Get()->Alloc(dbytes, shandle.ctx);
+#if MXNET_USE_MKLDNN == 1
+        Mkl_mem_ = nullptr;
+#endif
       }
     }
 
@@ -830,6 +855,16 @@ class NDArray {
     // Have MKL memory reference to the data in the default storage
     // or create memory for MKLDNN.
     void SetMKLMem(const TShape &shape, int dtype);
+    void ResetMKLMem() {
+      // If Mkl_mem_ isn't referencing to shandle, we need to reset Mkl_mem_.
+      if (Mkl_mem_ && Mkl_mem_->get_data_handle() != shandle.dptr)
+        Mkl_mem_ = nullptr;
+    }
+    // In the data is stored in MKLDNN layout, we reorder data in Mkl_mem_ and
+    // save the result in shandle.
+    void Reorder2Default();
+    bool IsMKLDNN() const;
+    bool IsDefault() const;
 #endif
 
     // create storage handle for aux data based on shape
@@ -870,6 +905,8 @@ class NDArray {
   size_t byte_offset_ = 0;
   /*! \brief type of data */
   int dtype_ = -1;
+  /*! \brief whether the NDArray uses memory of another NDArray. */
+  bool reuse_ = false;
   /*! \brief storage type of data */
   NDArrayStorageType storage_type_ = kUndefinedStorage;
   /*! \brief node entry for autograd */

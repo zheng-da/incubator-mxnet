@@ -114,14 +114,11 @@ inline static bool ConcatForwardInferStorageType(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(out_attrs->size(), 1U);
 #if MXNET_USE_MKLDNN == 1
   if (dev_mask == mshadow::cpu::kDevMask
-      // There must be at least one array that are in MKLDNN format.
-      && common::ContainsStorage(*in_attrs, kMKLDNNStorage)) {
+      && common::ContainsOnlyStorage(*in_attrs, kDefaultStorage))
     *dispatch_mode = DispatchMode::kFComputeEx;
-    (*out_attrs)[0] = kMKLDNNStorage;
-    return true;
-  }
+  else
 #endif
-  *dispatch_mode = DispatchMode::kFCompute;
+    *dispatch_mode = DispatchMode::kFCompute;
   (*out_attrs)[0] = kDefaultStorage;
   return true;
 }
@@ -134,14 +131,11 @@ inline static bool BackwardConcatStorageType(const nnvm::NodeAttrs& attrs,
 #if MXNET_USE_MKLDNN == 1
   CHECK_EQ(out_attrs->size(), in_attrs->size() - 1);
   if (dev_mask == mshadow::cpu::kDevMask
-      && in_attrs->at(0) == kMKLDNNStorage) {
+      && common::ContainsOnlyStorage(*in_attrs, kDefaultStorage))
     *dispatch_mode = DispatchMode::kFComputeEx;
-    for (size_t i = 0; i < out_attrs->size(); i++)
-      (*out_attrs)[i] = kMKLDNNStorage;
-    return true;
-  }
+  else
 #endif
-  *dispatch_mode = DispatchMode::kFCompute;
+    *dispatch_mode = DispatchMode::kFCompute;
   for (size_t i = 0; i < out_attrs->size(); i++)
     (*out_attrs)[i] = kDefaultStorage;
   return true;
@@ -158,10 +152,9 @@ void ConcatComputeExCPU(const nnvm::NodeAttrs& attrs,
   if (req[0] == kNullOp) return;
 #if MXNET_USE_MKLDNN == 1
   // MKLDNN support 2D and 4D concat
-  if (inputs[0].shape().ndim() == 2 || inputs[0].shape().ndim() == 4) {
-    if (inputs[0].dtype() == mshadow::kFloat32) {
-      MKLDNNConcatForward(attrs, op_ctx, inputs, req, outputs);
-    }
+  if ((inputs[0].shape().ndim() == 2 || inputs[0].shape().ndim() == 4)
+      && inputs[0].dtype() == mshadow::kFloat32) {
+    MKLDNNConcatForward(attrs, op_ctx, inputs, req, outputs);
   } else {
     std::vector<TBlob> in_blobs(inputs.size());
     for (size_t i = 0; i < in_blobs.size(); i++)
@@ -178,10 +171,9 @@ static void ConcatGradComputeExCPU(const nnvm::NodeAttrs& attrs,
     const OpContext& ctx, const std::vector<NDArray>& inputs,
     const std::vector<OpReqType>& req, const std::vector<NDArray>& outputs) {
 #if MXNET_USE_MKLDNN == 1
-  if (inputs[0].shape().ndim() == 2 || inputs[0].shape().ndim() == 4) {
-    if (inputs[0].dtype() == mshadow::kFloat32) {
-      MKLDNNConcatBackward(attrs, ctx, inputs, req, outputs);
-    }
+  if ((inputs[0].shape().ndim() == 2 || inputs[0].shape().ndim() == 4)
+      && inputs[0].dtype() == mshadow::kFloat32) {
+    MKLDNNConcatBackward(attrs, ctx, inputs, req, outputs);
   } else {
     std::vector<TBlob> in_blobs(1);
     in_blobs[0] = inputs[0].data();

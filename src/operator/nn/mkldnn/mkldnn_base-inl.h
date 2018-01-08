@@ -281,6 +281,10 @@ class MKLDNNOpSignature {
   uint64_t hash;
 
  public:
+  MKLDNNOpSignature() {
+    hash = 0;
+  }
+
   /*
    * We provide different methods to add signature to an op.
    * For operations, such as convolutin and fully connected, which determines
@@ -371,16 +375,24 @@ enum OutDataOp {
 
 typedef std::pair<OutDataOp, mkldnn::memory *> mkldnn_output_t;
 
+/*
+ * These two functions try to create MKLDNN memory in an NDArray based on `req'.
+ * The difference is that the first function can create MKLDNN memory with
+ * special layouts in an NDArray, while the second one can only create MKLDNN
+ * memory with default layouts.
+ */
 mkldnn_output_t CreateMKLDNNMem(const NDArray &arr,
                                 const mkldnn::memory::primitive_desc &desc,
                                 OpReqType req);
+mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &arr,
+                                       const mkldnn::memory::primitive_desc &desc,
+                                       OpReqType req);
+
 void CommitOutput(const NDArray &arr, const mkldnn_output_t &res);
+
 const mkldnn::memory *GetWeights(const NDArray &arr,
                                  const mkldnn::memory::primitive_desc &target_pd,
-                                 int num_groups, bool save_reorder = false);
-const mkldnn::memory *GetWeights(const NDArray &arr,
-                                 const mkldnn::engine &engine,
-                                 int num_groups = 1);
+                                 int num_groups);
 
 mkldnn_memory_format_t GetDefaultFormat(mkldnn::memory::desc desc);
 mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn::memory::primitive_desc pd,

@@ -163,10 +163,25 @@ void MKLDNNDeconvolutionForward(const nnvm::NodeAttrs& attrs, const OpContext &c
       out_data[deconv::kOut]);
   auto data_mem = in_data[deconv::kData].GetMKLDNNDataReorder(
       deconvFwd_pd.diff_dst_primitive_desc());
-  auto weight_mem = GetWeights(in_data[deconv::kWeight],
-      deconvFwd_pd.weights_primitive_desc(), param.num_group, !ctx.is_train);
+  const mkldnn::memory *weight_mem;
+  if (ctx.is_train) {
+    // TODO(zhengda) kvstore doesn't handle MKLDNN correctly. Let's reorder it
+    // to the default format for now.
+    if (in_data[deconv::kWeight].IsMKLDNN())
+      const_cast<NDArray &>(in_data[deconv::kWeight]).Reorder2Default();
+    weight_mem = GetWeights(in_data[deconv::kWeight],
+                            deconvFwd_pd.weights_primitive_desc(),
+                            param.num_group);
+  } else {
+    // For inference, we want to reorder the weight array so we don't need to
+    // reorder data every time.
+    const_cast<NDArray &>(in_data[deconv::kWeight]).Reorder(
+        deconvFwd_pd.weights_primitive_desc());
+    weight_mem = in_data[deconv::kWeight].GetMKLDNNData();
+  }
   auto out_mem = CreateMKLDNNMem(out_data[deconv::kOut],
-      deconvFwd_pd.diff_src_primitive_desc(), req[deconv::kOut]);
+                                 deconvFwd_pd.diff_src_primitive_desc(),
+                                 req[deconv::kOut]);
 
   MKLDNNStream::Get()->RegisterPrim(mkldnn::convolution_backward_data(
         deconvFwd_pd, *data_mem, *weight_mem, *out_mem.second));
@@ -201,9 +216,11 @@ void MKLDNNDeconvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &
       bwdData_pd.src_primitive_desc());
   if (req[deconv::kData]) {
     auto weight_mem = GetWeights(inputs[deconv::kWeight + 1],
-        bwdData_pd.weights_primitive_desc(), param.num_group);
+                                 bwdData_pd.weights_primitive_desc(),
+                                 param.num_group);
     auto in_grad_mem = CreateMKLDNNMem(in_grad[deconv::kData],
-        bwdData_pd.dst_primitive_desc(), req[deconv::kData]);
+                                       bwdData_pd.dst_primitive_desc(),
+                                       req[deconv::kData]);
     MKLDNNStream::Get()->RegisterPrim(mkldnn::convolution_forward(bwdData_pd,
           *out_grad_mem, *weight_mem, *in_grad_mem.second));
     CommitOutput(in_grad[deconv::kData], in_grad_mem);
@@ -217,8 +234,9 @@ void MKLDNNDeconvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &
           bwdWeights_pd.src_primitive_desc());
     auto data_mem = inputs[deconv::kData + 1].GetMKLDNNDataReorder(
         bwdWeights_pd.diff_dst_primitive_desc());
-    auto in_grad_weight = CreateMKLDNNMem(in_grad[deconv::kWeight],
-        bwdWeights_pd.diff_weights_primitive_desc(), req[deconv::kWeight]);
+    auto in_grad_weight = CreateMKLDNNWeightGrad(in_grad[deconv::kWeight],
+                                                 bwdWeights_pd.diff_weights_primitive_desc(),
+                                                 req[deconv::kWeight]);
     MKLDNNStream::Get()->RegisterPrim(mkldnn::convolution_backward_weights(
           bwdWeights_pd, *out_grad_mem, *data_mem, *in_grad_weight.second));
     CommitOutput(in_grad[deconv::kWeight], in_grad_weight);

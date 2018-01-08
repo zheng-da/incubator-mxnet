@@ -120,6 +120,22 @@ def python3_gpu_ut(docker_type) {
   }
 }
 
+// Python 2
+def python2_mkldnn_ut(docker_type) {
+  timeout(time: max_time, unit: 'MINUTES') {
+    sh "${docker_run} ${docker_type} find . -name '*.pyc' -type f -delete"
+    sh "${docker_run} ${docker_type} PYTHONPATH=./python/ nosetests-2.7 --with-timer --verbose tests/python/cpu"
+  }
+}
+
+// Python 3
+def python3_mkldnn_ut(docker_type) {
+  timeout(time: max_time, unit: 'MINUTES') {
+    sh "${docker_run} ${docker_type} find . -name '*.pyc' -type f -delete"
+    sh "${docker_run} ${docker_type} PYTHONPATH=./python/ nosetests-3.4 --with-timer --verbose tests/python/cpu"
+  }
+}
+
 try {
   stage("Sanity Check") {
     timeout(time: max_time, unit: 'MINUTES') {
@@ -333,6 +349,7 @@ try {
           init_git()
           unpack_lib('mkldnn_cpu', mx_mkldnn_lib)
           python2_ut('cpu_mkldnn')
+          python2_mkldnn_ut('cpu_mkldnn')
         }
       }
     },
@@ -342,6 +359,7 @@ try {
           init_git()
           unpack_lib('mkldnn_gpu', mx_mkldnn_lib)
           python2_gpu_ut('gpu_mkldnn')
+          python2_mkldnn_ut('gpu_mkldnn')
         }
       }
     },
@@ -351,6 +369,7 @@ try {
           init_git()
           unpack_lib('mkldnn_cpu', mx_mkldnn_lib)
           python3_ut('cpu_mkldnn')
+          python3_mkldnn_ut('cpu_mkldnn')
         }
       }
     },
@@ -360,6 +379,7 @@ try {
           init_git()
           unpack_lib('mkldnn_gpu', mx_mkldnn_lib)
           python3_gpu_ut('gpu_mkldnn')
+          python3_mkldnn_ut('gpu_mkldnn')
         }
       }
     },

@@ -165,7 +165,7 @@ nnvm::NodeEntry AggregateGradient(std::vector<nnvm::NodeEntry>&& v) {
   static const Op* zeros_op = Op::Get("_zeros");
   static const Op* zeros_like_op = Op::Get("zeros_like");
 
-  if (v.size() == 0) {
+  if (v.empty()) {
     nnvm::NodePtr ng = nnvm::Node::Create();
     ng->attrs.op = zeros_op;
     ng->attrs.name = "zeros";
@@ -174,17 +174,12 @@ nnvm::NodeEntry AggregateGradient(std::vector<nnvm::NodeEntry>&& v) {
   }
 
   // remove zero in the sum. at least keep 1.
-  size_t begin = 0;
-  for (size_t i = 0; i < v.size(); ++i) {
-    if (v[i].node->op() != zeros_op && v[i].node->op() != zeros_like_op) {
-      if (begin != i) {
-        v[begin] = std::move(v[i]);
-      }
-      ++begin;
-    }
-  }
-  if (begin == 0) begin = 1;
-  v.resize(begin);
+  auto begin = std::remove_if(v.begin(), v.end(), [](const nnvm::NodeEntry& nodeEntry) {
+     return nodeEntry.node->op() == zeros_op || nodeEntry.node->op() == zeros_like_op;
+  });
+  if (begin == v.begin()) ++begin;
+  v.erase(begin, v.end());
+  CHECK(!v.empty());
 
   if (v.size() == 1) {
     return std::move(v[0]);
@@ -1223,7 +1218,7 @@ void GraphExecutor::InitDataEntryMemory(std::vector<NDArray>* shared_pool) {
       data_entry_[i] = src.AsArray(vshape[i], vdtype[i]);
     } else {
       data_entry_[i] = NDArray(storage_type, vshape[i], data_context[i],
-          true, vdtype[i]);
+                               true, vdtype[i]);
     }
     if (log_verbose_) {
       LOG(INFO) << "\tinit data entry\t" << i << "\tas " << common::stype_string(storage_type);

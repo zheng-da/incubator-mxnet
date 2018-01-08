@@ -32,6 +32,9 @@
 #ifdef __CUDACC__
 #include "./cast_storage-inl.cuh"
 #endif  // __CUDACC__
+#if MXNET_USE_MKLDNN == 1
+#include "../nn/mkldnn/mkldnn_base-inl.h"
+#endif
 
 
 namespace mxnet {
@@ -324,11 +327,6 @@ void CastStorageCsrDnsImpl(const OpContext& ctx,
   });
 }
 
-#if MXNET_USE_MKLDNN == 1
-void CastStorageMKLDnsImpl(const OpContext& ctx, const NDArray& src, const NDArray &dns);
-void CastStorageDnsMKLImpl(const OpContext& ctx, const NDArray& src, const NDArray &dns);
-#endif
-
 template<typename xpu>
 void CastStorageComputeImpl(const OpContext& ctx,
                             const NDArray& input,
@@ -348,10 +346,12 @@ void CastStorageComputeImpl(const OpContext& ctx,
     TBlob ret = output.data();
     CastStorageCsrDnsImpl<xpu>(ctx, input, &ret);
 #if MXNET_USE_MKLDNN == 1
-  } else if (src_stype == kMKLDNNStorage && dst_stype == kDefaultStorage) {
-    CastStorageMKLDnsImpl(ctx, input, output);
-  } else if (src_stype == kDefaultStorage && dst_stype == kMKLDNNStorage) {
-    CastStorageDnsMKLImpl(ctx, input, output);
+  } else if (src_stype == kDefaultStorage && dst_stype == kDefaultStorage) {
+    // In this case, one of the arrays must use non-default layout.
+    CHECK(input.IsMKLDNN() || output.IsMKLDNN());
+    auto in_mem = input.GetMKLDNNData();
+    const_cast<NDArray &>(output).CopyFrom(*in_mem);
+    MKLDNNStream::Get()->Submit();
 #endif
   } else {
     LOG(FATAL) << "Not implemented from " << src_stype << " to " << dst_stype;

@@ -203,6 +203,10 @@ inline void SetDependency(const nnvm::NodeAttrs& attrs,
         requested.push_back(ResourceManager::Get()->Request(ctx, req));
         write_vars.push_back(requested.back().var);
         break;
+       case ResourceRequest::kParallelRandom:
+        requested.push_back(ResourceManager::Get()->Request(ctx, req));
+        write_vars.push_back(requested.back().var);
+        break;
        default:
         LOG(FATAL) << "resource type not yet supported";
       }
@@ -349,9 +353,9 @@ inline void PushFCompute(const FCompute& fn,
       // mapping from index in input_blobs to index in pre_temp_dst
       std::unordered_map<uint32_t, uint32_t> in_temp_idx_map;
       // setup blobs
-      SetupDefaultBlobsInOut(inputs, outputs, &input_blobs, &output_blobs,
-                             &pre_temp_src, &pre_temp_dst, &post_temp_src, &post_temp_dst,
-                             &in_temp_idx_map, mutate_idx);
+      SetupDefaultBlobsInOut(inputs, outputs, req, nullptr, nullptr,
+                             &input_blobs, &output_blobs, &pre_temp_src, &pre_temp_dst,
+                             &post_temp_src, &post_temp_dst, &in_temp_idx_map, mutate_idx);
       // setup context
       OpContext opctx{is_train, rctx, engine::CallbackOnComplete(), requested};
       bool is_gpu = ctx.dev_mask() == gpu::kDevMask;
@@ -463,9 +467,9 @@ inline void PushOperator(const OpStatePtr& state,
         // mapping from index in input_blobs to index in pre_temp_dst
         std::unordered_map<uint32_t, uint32_t> in_temp_idx_map;
         // populate input blobs and output blobs
-        SetupDefaultBlobsInOut(inputs, outputs, &input_blobs, &output_blobs,
-                               &pre_temp_src, &pre_temp_dst, &post_temp_src, &post_temp_dst,
-                               &in_temp_idx_map, mutate_idx);
+        SetupDefaultBlobsInOut(inputs, outputs, req, nullptr, nullptr,
+                               &input_blobs, &output_blobs, &pre_temp_src, &pre_temp_dst,
+                               &post_temp_src, &post_temp_dst, &in_temp_idx_map, mutate_idx);
         // setup contexts
         bool is_gpu = rctx.get_ctx().dev_mask() == gpu::kDevMask;
         // pre-fcompute fallback
