@@ -72,7 +72,7 @@ void MKLDNNDeconvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &
                                  const std::vector<NDArray>& outputs);
 
 /* For softmax */
-void MKLDNNSoftmaxForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
+void MKLDNNSoftmaxCompute(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                           const NDArray &in_data, const OpReqType &req,
                           const NDArray &out_data);
 
