@@ -21,6 +21,7 @@
  * \file mkldnn_softmax.cc
  * \brief
  * \author Da Zheng
+ * \author Wenting Jiang (wenting.jiang@intel.com)        
 */
 
 #if MXNET_USE_MKLDNN == 1
@@ -37,16 +38,18 @@ class MKLDNNSoftmaxFwd {
   std::shared_ptr<mkldnn::memory> out;
 
  public:
-  MKLDNNSoftmaxFwd(const SoftmaxParam& param, bool is_train,
-                  const NDArray &in_data,
-                  const NDArray &out_data,
-                  const OpReqType &req):
-                  fwd(nullptr), data(nullptr), out(nullptr) {
-                  _Init(param, is_train, in_data, out_data, req);
+  MKLDNNSoftmaxFwd(const SoftmaxParam& param,
+                   bool is_train,
+                   const NDArray &in_data,
+                   const NDArray &out_data,
+                   const OpReqType &req):
+                   fwd(nullptr), data(nullptr), out(nullptr) {
+                   _Init(param, is_train, in_data, out_data, req);
   }
   ~MKLDNNSoftmaxFwd() {}
   void SetDataHandle(const NDArray &in_data,
-                 const NDArray &out_data, const OpReqType &req) {
+                     const NDArray &out_data,
+                     const OpReqType &req) {
     this->data->set_data_handle(in_data.GetMKLDNNData()->get_data_handle());
     auto out_mem = const_cast<NDArray&>(out_data).CreateMKLDNNData(this->out->get_primitive_desc());
     this->out->set_data_handle(out_mem->get_data_handle());
@@ -58,8 +61,11 @@ class MKLDNNSoftmaxFwd {
   }
 
  private:
-  void _Init(const SoftmaxParam& param, bool is_train, const NDArray &in_data,
-             const NDArray &out_data, const OpReqType &req) {
+  void _Init(const SoftmaxParam& param,
+             bool is_train,
+             const NDArray &in_data,
+             const NDArray &out_data,
+             const OpReqType &req) {
     // mkldnn::softmax_forward::primitive_desc
     auto input_mem = in_data.GetMKLDNNData();
     auto output_mem = out_data.GetMKLDNNData();
@@ -87,8 +93,11 @@ class MKLDNNSoftmaxFwd {
 
 typedef MKLDNNParamOpSign<SoftmaxParam> MKLDNNSmSignature;
 
-static MKLDNNSoftmaxFwd &GetSoftmaxFwd(const SoftmaxParam& param, const OpContext &ctx,
-      const NDArray &in_data, const NDArray &out_data, const OpReqType &req) {
+static MKLDNNSoftmaxFwd &GetSoftmaxFwd(const SoftmaxParam& param,
+                                       const OpContext &ctx,
+                                       const NDArray &in_data,
+                                       const NDArray &out_data,
+                                       const OpReqType &req) {
   static thread_local std::unordered_map<MKLDNNSmSignature, MKLDNNSoftmaxFwd, MKLDNNOpHash> fwds;
   MKLDNNSmSignature key(param);
   key.AddSign(ctx.is_train);
@@ -106,8 +115,10 @@ static MKLDNNSoftmaxFwd &GetSoftmaxFwd(const SoftmaxParam& param, const OpContex
   return it->second;
 }
 
-void MKLDNNSoftmaxCompute(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
-                          const NDArray &in_data, const OpReqType &req,
+void MKLDNNSoftmaxCompute(const nnvm::NodeAttrs& attrs,
+                          const OpContext &ctx,
+                          const NDArray &in_data,
+                          const OpReqType &req,
                           const NDArray &out_data) {
   const SoftmaxParam& param = nnvm::get<SoftmaxParam>(attrs.parsed);
   MKLDNNSoftmaxFwd &fwd = GetSoftmaxFwd(param, ctx, in_data, out_data, req);
