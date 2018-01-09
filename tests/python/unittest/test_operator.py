@@ -1020,6 +1020,31 @@ def test_batchnorm_training():
     for stype in stypes:
         check_batchnorm_training(stype)
 
+def test_convolution_relu():
+    num_filter = 4
+    num_group = 1
+    kernel = (3, 3)
+    shape = (32, 4, 256, 256)
+    slope = 0
+
+    x = mx.sym.Variable('x')
+    w = mx.sym.Variable('w')
+    b = mx.sym.Variable('b')
+    y1 = mx.sym.ConvolutionRelu(data=x, weight=w, bias=b, num_filter=num_filter, num_group=num_group, kernel=kernel, slope=slope)
+    y2 = mx.sym.Convolution(data=x, weight=w, bias=b, num_filter=num_filter, num_group=num_group, kernel=kernel)
+    y3 = mx.sym.relu(data=y2)
+
+    exe1 = y1.simple_bind(default_context(), x=shape, grad_req=None)
+    exe2 = y3.simple_bind(default_context(), x=shape, grad_req=None)
+    for arr1, arr2 in zip(exe1.arg_arrays, exe2.arg_arrays):
+        arr1[:] = np.random.normal(size=arr1.shape)
+        arr2[:] = arr1
+    exe1.forward(is_train=False)
+    exe2.forward(is_train=False)
+
+    for arr1, arr2 in zip(exe1.outputs , exe2.outputs):
+        np.testing.assert_allclose(arr1.asnumpy(), arr2.asnumpy(), rtol=1e-3, atol=1e-4)
+
 
 def test_convolution_grouping():
     num_filter = 4
