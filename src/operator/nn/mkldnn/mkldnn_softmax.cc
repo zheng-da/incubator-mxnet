@@ -68,24 +68,18 @@ class MKLDNNSoftmaxFwd {
     // mkldnn::softmax_forward::primitive_desc
     auto input_mem = in_data.GetMKLDNNData();
     mkldnn::memory::primitive_desc data_mpd = input_mem->get_primitive_desc();
-    auto output_mem = CreateMKLDNNMem(out_data, data_mpd, req).second;
     mkldnn::memory::desc data_md = data_mpd.desc();
     auto cpu_engine = CpuEngine::Get()->get_engine();
     auto prop = is_train
-      ? mkldnn::prop_kind::forward_training : mkldnn::prop_kind::forward_scoring;
-    mkldnn::softmax_forward::desc desc = mkldnn::softmax_forward::desc(prop,
-        data_md, param.axis);
+                ? mkldnn::prop_kind::forward_training : mkldnn::prop_kind::forward_scoring;
+    mkldnn::softmax_forward::desc desc = mkldnn::softmax_forward::desc(prop, data_md, param.axis);
     mkldnn::softmax_forward::primitive_desc pdesc(desc, cpu_engine);
     // mkldnn::memory
-    this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-                               input_mem->get_primitive_desc(),
-                               input_mem->get_data_handle()));
-    this->out = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-                               output_mem->get_primitive_desc(),
-                               output_mem->get_data_handle()));
+    this->data.reset(new mkldnn::memory(data_mpd));
+    this->out.reset(new mkldnn::memory(data_mpd));
     // mkldnn::softmax_forward
     this->fwd = std::shared_ptr<mkldnn::softmax_forward>(
-                new mkldnn::softmax_forward(pdesc, *input_mem, *output_mem));
+                new mkldnn::softmax_forward(pdesc, *(this->data), *(this->out)));
   }
 };
 
