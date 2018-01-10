@@ -191,19 +191,37 @@ class MKLDNNDeconvForward {
 
  public:
   MKLDNNDeconvForward(const DeconvolutionParam& param,
-                    const NDArray &data, const NDArray &weights,
-                    bool has_bias, const NDArray &output): fwd_pd(
-                        GetDeconvFwdImpl(param, data, weights, has_bias, output)) {
-  }
-
+                              const NDArray &data,
+                              const NDArray &weights,
+                              bool has_bias,
+                              const NDArray &output);
   void SetDataHandle(const DeconvolutionParam& param, const std::vector<NDArray> &in_data,
     const std::vector<OpReqType> &req, const std::vector<NDArray> &out_data);
 
-  void Execute();
+  void Execute(const std::vector<OpReqType> &req, const std::vector<NDArray> &out_data);
 
  private:
   mkldnn::convolution_backward_data::primitive_desc fwd_pd;
 };  // class MKLDNNDeconvForward
+
+MKLDNNDeconvForward::MKLDNNDeconvForward(const DeconvolutionParam& param,
+                                const NDArray &data,
+                                const NDArray &weights,
+                                bool has_bias,
+                                const NDArray &output)
+                                :fwd_pd(GetDeconvFwdImpl(param, data, weights, has_bias, output)) {
+    this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
+            fwd_pd.diff_dst_primitive_desc()));
+    this->weight = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
+            fwd_pd.weights_primitive_desc()));
+    this->out = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
+            fwd_pd.diff_src_primitive_desc()));
+    this->fwd = std::shared_ptr<mkldnn::convolution_backward_data>(
+      new mkldnn::convolution_backward_data(fwd_pd,
+                                            mkldnn::primitive::at(*this->data),
+                                            mkldnn::primitive::at(*this->weight),
+                                            *this->out));
+}
 
 void MKLDNNDeconvForward::SetDataHandle(const DeconvolutionParam& param,
     const std::vector<NDArray> &in_data,
@@ -217,35 +235,19 @@ void MKLDNNDeconvForward::SetDataHandle(const DeconvolutionParam& param,
     auto out_mem = CreateMKLDNNMem(out_data[deconv::kOut],
         fwd_pd.diff_src_primitive_desc(), req[deconv::kOut]);
     auto output = out_mem.second;
-    if (this->data == nullptr) {
-      this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-              fwd_pd.diff_dst_primitive_desc(), data_mem->get_data_handle()));
-    } else {
-      this->data->set_data_handle(data_mem->get_data_handle());
-    }
-    if (this->weight == nullptr) {
-      this->weight = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-              fwd_pd.weights_primitive_desc(), weight_mem->get_data_handle()));
-    } else {
-      this->weight->set_data_handle(weight_mem->get_data_handle());
-    }
-
-    if (this->out == nullptr) {
-      this->out = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-              fwd_pd.diff_src_primitive_desc(), output->get_data_handle()));
-    } else {
-      this->out->set_data_handle(output->get_data_handle());
-    }
-
-    this->fwd = std::shared_ptr<mkldnn::convolution_backward_data>(
-      new mkldnn::convolution_backward_data(fwd_pd, mkldnn::primitive::at(*this->data),
-                                      mkldnn::primitive::at(*this->weight),
-                                      *this->out));
-    CommitOutput(out_data[deconv::kOut], out_mem);
+    this->data->set_data_handle(data_mem->get_data_handle());
+    this->weight->set_data_handle(weight_mem->get_data_handle());
+    this->out->set_data_handle(output->get_data_handle());
 }
 
-void MKLDNNDeconvForward::Execute() {
+void MKLDNNDeconvForward::Execute(const std::vector<OpReqType> &req,
+                                     const std::vector<NDArray> &out_data) {
+  auto out_mem = CreateMKLDNNMem(out_data[deconv::kOut],
+                                 fwd_pd.diff_src_primitive_desc(),
+                                 req[deconv::kOut]);
+
   MKLDNNStream::Get()->RegisterPrim(*fwd);
+  CommitOutput(out_data[deconv::kOut], out_mem);
   MKLDNNStream::Get()->Submit();
 }
 
@@ -309,7 +311,7 @@ void MKLDNNDeconvolutionForward(const nnvm::NodeAttrs& attrs, const OpContext &c
 
   deconvFwd.SetDataHandle(param, in_data, req, out_data);
 
-  deconvFwd.Execute();
+  deconvFwd.Execute(req, out_data);
 
   MKLDNNDeconvFwdBiasPostProcess(param, ctx, in_data, out_data);
 }
@@ -329,9 +331,11 @@ void MKLDNNDeconvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &
       bwdData_pd.src_primitive_desc());
   if (req[deconv::kData]) {
     auto weight_mem = GetWeights(inputs[deconv::kWeight + 1],
-        bwdData_pd.weights_primitive_desc(), param.num_group);
+                                 bwdData_pd.weights_primitive_desc(),
+                                 param.num_group);
     auto in_grad_mem = CreateMKLDNNMem(in_grad[deconv::kData],
-        bwdData_pd.dst_primitive_desc(), req[deconv::kData]);
+                                       bwdData_pd.dst_primitive_desc(),
+                                       req[deconv::kData]);
     MKLDNNStream::Get()->RegisterPrim(mkldnn::convolution_forward(bwdData_pd,
           *out_grad_mem, *weight_mem, *in_grad_mem.second));
     CommitOutput(in_grad[deconv::kData], in_grad_mem);
@@ -346,7 +350,8 @@ void MKLDNNDeconvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &
     auto data_mem = inputs[deconv::kData + 1].GetMKLDNNDataReorder(
         bwdWeights_pd.diff_dst_primitive_desc());
     auto in_grad_weight = CreateMKLDNNMem(in_grad[deconv::kWeight],
-        bwdWeights_pd.diff_weights_primitive_desc(), req[deconv::kWeight]);
+                                          bwdWeights_pd.diff_weights_primitive_desc(),
+                                          req[deconv::kWeight]);
     MKLDNNStream::Get()->RegisterPrim(mkldnn::convolution_backward_weights(
           bwdWeights_pd, *out_grad_mem, *data_mem, *in_grad_weight.second));
     CommitOutput(in_grad[deconv::kWeight], in_grad_weight);
@@ -367,5 +372,6 @@ void MKLDNNDeconvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &
 }  // namespace mxnet
 
 #endif  // MXNET_USE_MKLDNN == 1
+
 
 
