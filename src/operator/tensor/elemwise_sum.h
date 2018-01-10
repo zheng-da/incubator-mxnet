@@ -26,6 +26,9 @@
 #ifndef MXNET_OPERATOR_TENSOR_ELEMWISE_SUM_H_
 #define MXNET_OPERATOR_TENSOR_ELEMWISE_SUM_H_
 
+#include <mxnet/operator.h>
+#include <mxnet/operator_util.h>
+#include <dmlc/parameter.h>
 #include <dmlc/logging.h>
 #include <cstring>
 #include <vector>
@@ -36,6 +39,18 @@
 
 namespace mxnet {
 namespace op {
+
+struct ElementWiseSumParam : public dmlc::Parameter<ElementWiseSumParam> {
+  int num_args;
+  DMLC_DECLARE_PARAMETER(ElementWiseSumParam) {
+    DMLC_DECLARE_FIELD(num_args).set_lower_bound(1).set_default(2)
+        .describe("Number of inputs to be summed.");
+  }
+
+  bool operator==(const ElementWiseSumParam& other) const {
+    return this->num_args == other.num_args;
+  }
+};
 
 struct Sum {
   template<typename DType>

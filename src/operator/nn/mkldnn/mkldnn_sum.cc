@@ -24,6 +24,7 @@
 */
 #include <iostream>
 
+#include "../../tensor/elemwise_sum.h"
 #include "./mkldnn_ops-inl.h"
 #include "./mkldnn_base-inl.h"
 
@@ -48,26 +49,116 @@ void Sum(const mkldnn::memory &arr1, const mkldnn::memory &arr2,
   MKLDNNStream::Get()->RegisterPrim(mkldnn::sum(sum_pd, inputs, out));
 }
 
-void MKLDNNSumForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
+typedef MKLDNNParamOpSign<ElementWiseSumParam> MKLDNNSumSignature;
+
+class MKLDNNSumFwd {
+ public:
+  explicit MKLDNNSumFwd(const std::vector<NDArray> &inputs) {
+    _Init(inputs);
+  }
+  ~MKLDNNSumFwd() {}
+  void SetDataHandle(const std::vector<NDArray> &inputs,
+                     const NDArray &output,
+                     const OpReqType &req);
+  void Execute(const NDArray &output);
+
+ private:
+  void _Init(const std::vector<NDArray> &inputs);
+
+ private:
+  std::shared_ptr<mkldnn::sum> fwd;
+  std::vector<std::shared_ptr<mkldnn::memory>> in_data;
+  mkldnn_output_t out;
+  std::shared_ptr<mkldnn::sum::primitive_desc> fwd_pd;
+};
+
+void MKLDNNSumFwd::_Init(const std::vector<NDArray> &inputs) {
+  std::vector<mkldnn::memory> in_mems;
+  for (size_t i = 0; i < inputs.size(); i++) {
+    in_mems.push_back(*inputs[i].GetMKLDNNData());
+  }
+  this->in_data.resize(inputs.size());
+  for (size_t i = 0; i < in_mems.size(); i++) {
+    this->in_data[i].reset(new mkldnn::memory(in_mems[i].get_primitive_desc(),
+                                              in_mems[i].get_data_handle()));
+  }
+
+  std::vector<float> scales(inputs.size());
+  std::vector<mkldnn::memory::primitive_desc> in_pds(inputs.size());
+  for (size_t i = 0; i < in_mems.size(); i++) {
+    in_pds[i] = in_mems[i].get_primitive_desc();
+    scales[i] = 1;
+  }
+  this->fwd_pd.reset(new mkldnn::sum::primitive_desc(scales, in_pds));
+  this->out.second = new mkldnn::memory(this->fwd_pd->dst_primitive_desc());
+
+  std::vector<mkldnn::primitive::at> in_prims;
+  for (size_t i = 0; i < this->in_data.size(); i++) {
+    in_prims.push_back(*(this->in_data[i]));
+  }
+
+  this->fwd.reset(new mkldnn::sum(*(this->fwd_pd), in_prims,
+                                  *(this->out.second)));
+}
+
+void MKLDNNSumFwd::SetDataHandle(const std::vector<NDArray> &inputs,
+                                 const NDArray &output,
+                                 const OpReqType &req) {
+  std::vector<mkldnn::memory> in_mems;
+  for (size_t i = 0; i < inputs.size(); i++) {
+    in_mems.push_back(*inputs[i].GetMKLDNNData());
+    this->in_data[i]->set_data_handle(in_mems[i].get_data_handle());
+  }
+
+  auto out_mem = CreateMKLDNNMem(output, this->fwd_pd->dst_primitive_desc(),
+                                 req);
+  this->out.first = out_mem.first;
+  this->out.second->set_data_handle(out_mem.second->get_data_handle());
+}
+
+void MKLDNNSumFwd::Execute(const NDArray &output) {
+  MKLDNNStream *stream = MKLDNNStream::Get();
+  stream->RegisterPrim(*(this->fwd));
+  CommitOutput(output, this->out);
+  stream->Submit();
+}
+
+static MKLDNNSumFwd
+&GetSumFwd(const ElementWiseSumParam& param, const OpContext &ctx,
+           const std::vector<NDArray> &inputs) {
+  static thread_local std::unordered_map<MKLDNNSumSignature,
+                                         MKLDNNSumFwd, MKLDNNOpHash> sum_fwds;
+  MKLDNNSumSignature key(param);
+  key.AddSign(ctx.is_train);
+  key.AddSign(param.num_args);
+  key.AddSign(inputs);
+
+  auto it = sum_fwds.find(key);
+  if (it == sum_fwds.end()) {
+    MKLDNNSumFwd fwd(inputs);
+    auto ins_ret = sum_fwds.insert(std::pair<MKLDNNSumSignature, MKLDNNSumFwd>(
+            key, fwd));
+    CHECK(ins_ret.second);
+    it = ins_ret.first;
+  }
+  return it->second;
+}
+
+void MKLDNNSumCompute(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                       const std::vector<NDArray> &inputs, const OpReqType &req,
                       const NDArray &out_data) {
   TmpMemMgr::Get()->Init(ctx.requested[0]);
-  std::vector<mkldnn::primitive::at> in_prims;
-  std::vector<mkldnn::memory::primitive_desc> in_pds(inputs.size());
-  std::vector<float> scales(inputs.size());
-  for (size_t i = 0; i < inputs.size(); i++) {
-    auto in_mem = inputs[i].GetMKLDNNData();
-    in_prims.push_back(*in_mem);
-    in_pds[i] = in_mem->get_primitive_desc();
-    scales[i] = 1;
-  }
-  mkldnn::sum::primitive_desc pdesc(scales, in_pds);
+  ElementWiseSumParam param;
 
-  auto out_mem = CreateMKLDNNMem(out_data, pdesc.dst_primitive_desc(), req);
-  MKLDNNStream *stream = MKLDNNStream::Get();
-  stream->RegisterPrim(mkldnn::sum(pdesc, in_prims, *out_mem.second));
-  CommitOutput(out_data, out_mem);
-  stream->Submit();
+  if (!attrs.parsed.empty()) {
+    param = nnvm::get<ElementWiseSumParam>(attrs.parsed);
+  } else {
+    memset(&param, 0, sizeof(param));
+  }
+
+  MKLDNNSumFwd &fwd = GetSumFwd(param, ctx, inputs);
+  fwd.SetDataHandle(inputs, out_data, req);
+  fwd.Execute(out_data);
 }
 
 }  // namespace op
