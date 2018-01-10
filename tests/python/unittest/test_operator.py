@@ -1045,6 +1045,22 @@ def test_convolution_relu():
     for arr1, arr2 in zip(exe1.outputs , exe2.outputs):
         np.testing.assert_allclose(arr1.asnumpy(), arr2.asnumpy(), rtol=1e-3, atol=1e-4)
 
+    slope = 0.3
+    z1 = mx.sym.ConvolutionRelu(data=x, weight=w, bias=b, num_filter=num_filter, num_group=num_group, kernel=kernel, slope=slope)
+    z2 = mx.sym.Convolution(data=x, weight=w, bias=b, num_filter=num_filter, num_group=num_group, kernel=kernel)
+    z3 = mx.sym.LeakyReLU(z2, act_type='leaky', slope=slope)
+    exe1 = z1.simple_bind(default_context(), x=shape, grad_req=None)
+    exe2 = z3.simple_bind(default_context(), x=shape, grad_req=None)
+    for arr1, arr2 in zip(exe1.arg_arrays, exe2.arg_arrays):
+        arr1[:] = np.random.normal(size=arr1.shape)
+        arr2[:] = arr1
+    exe1.forward(is_train=False)
+    exe2.forward(is_train=False)
+
+
+    for arr1, arr2 in zip(exe1.outputs , exe2.outputs):
+        np.testing.assert_allclose(arr1.asnumpy(), arr2.asnumpy(), rtol=1e-3, atol=1e-4)
+
 
 def test_convolution_grouping():
     num_filter = 4
