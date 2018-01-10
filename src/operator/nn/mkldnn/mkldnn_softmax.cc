@@ -48,8 +48,7 @@ class MKLDNNSoftmaxFwd {
   }
   ~MKLDNNSoftmaxFwd() {}
   void SetDataHandle(const NDArray &in_data,
-                     const NDArray &out_data,
-                     const OpReqType &req) {
+                     const NDArray &out_data) {
     this->data->set_data_handle(in_data.GetMKLDNNData()->get_data_handle());
     auto out_mem = const_cast<NDArray&>(out_data).CreateMKLDNNData(this->out->get_primitive_desc());
     this->out->set_data_handle(out_mem->get_data_handle());
@@ -68,11 +67,10 @@ class MKLDNNSoftmaxFwd {
              const OpReqType &req) {
     // mkldnn::softmax_forward::primitive_desc
     auto input_mem = in_data.GetMKLDNNData();
-    auto output_mem = out_data.GetMKLDNNData();
-
     mkldnn::memory::primitive_desc data_mpd = input_mem->get_primitive_desc();
+    auto output_mem = CreateMKLDNNMem(out_data, data_mpd, req).second;
     mkldnn::memory::desc data_md = data_mpd.desc();
-    auto cpu_engine = data_mpd.get_engine();
+    auto cpu_engine = CpuEngine::Get()->get_engine();
     auto prop = is_train
       ? mkldnn::prop_kind::forward_training : mkldnn::prop_kind::forward_scoring;
     mkldnn::softmax_forward::desc desc = mkldnn::softmax_forward::desc(prop,
@@ -107,8 +105,7 @@ static MKLDNNSoftmaxFwd &GetSoftmaxFwd(const SoftmaxParam& param,
   auto it = fwds.find(key);
   if (it == fwds.end()) {
     MKLDNNSoftmaxFwd fwd(param, ctx.is_train, in_data, out_data, req);
-    auto ins_ret = fwds.insert(std::pair<MKLDNNSmSignature, MKLDNNSoftmaxFwd>(
-            key, fwd));
+    auto ins_ret = fwds.insert(std::pair<MKLDNNSmSignature, MKLDNNSoftmaxFwd>(key, fwd));
     CHECK(ins_ret.second);
     it = ins_ret.first;
   }
@@ -122,7 +119,7 @@ void MKLDNNSoftmaxCompute(const nnvm::NodeAttrs& attrs,
                           const NDArray &out_data) {
   const SoftmaxParam& param = nnvm::get<SoftmaxParam>(attrs.parsed);
   MKLDNNSoftmaxFwd &fwd = GetSoftmaxFwd(param, ctx, in_data, out_data, req);
-  fwd.SetDataHandle(in_data, out_data, req);
+  fwd.SetDataHandle(in_data, out_data);
   fwd.Execute();
 }
 
