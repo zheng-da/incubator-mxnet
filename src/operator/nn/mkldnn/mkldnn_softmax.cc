@@ -94,7 +94,8 @@ static MKLDNNSoftmaxFwd &GetSoftmaxFwd(const SoftmaxParam& param,
   MKLDNNSmSignature key(param);
   key.AddSign(ctx.is_train);
   key.AddSign(param.axis);
-  key.AddSign(in_data);
+  // TODO(huang jin): add NDArray as key uniformly
+  key.AddSign(*(in_data.GetMKLDNNData()));
 
   auto it = fwds.find(key);
   if (it == fwds.end()) {
