@@ -191,12 +191,15 @@ class MKLDNNDeconvForward {
 
  public:
   MKLDNNDeconvForward(const DeconvolutionParam& param,
-                              const NDArray &data,
-                              const NDArray &weights,
-                              bool has_bias,
-                              const NDArray &output);
-  void SetDataHandle(const DeconvolutionParam& param, const std::vector<NDArray> &in_data,
-    const std::vector<OpReqType> &req, const std::vector<NDArray> &out_data);
+                      const NDArray &data,
+                      const NDArray &weights,
+                      bool has_bias,
+                      const NDArray &output);
+  void SetDataHandle(const DeconvolutionParam& param,
+                     const OpContext &ctx,
+                     const std::vector<NDArray> &in_data,
+                     const std::vector<OpReqType> &req,
+                     const std::vector<NDArray> &out_data);
 
   void Execute(const std::vector<OpReqType> &req, const std::vector<NDArray> &out_data);
 
@@ -210,34 +213,48 @@ MKLDNNDeconvForward::MKLDNNDeconvForward(const DeconvolutionParam& param,
                                 bool has_bias,
                                 const NDArray &output)
                                 :fwd_pd(GetDeconvFwdImpl(param, data, weights, has_bias, output)) {
-    this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-            fwd_pd.diff_dst_primitive_desc()));
-    this->weight = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-            fwd_pd.weights_primitive_desc()));
-    this->out = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-            fwd_pd.diff_src_primitive_desc()));
-    this->fwd = std::shared_ptr<mkldnn::convolution_backward_data>(
-      new mkldnn::convolution_backward_data(fwd_pd,
-                                            mkldnn::primitive::at(*this->data),
-                                            mkldnn::primitive::at(*this->weight),
-                                            *this->out));
+  this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
+          fwd_pd.diff_dst_primitive_desc()));
+  this->weight = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
+          fwd_pd.weights_primitive_desc()));
+  this->out = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
+          fwd_pd.diff_src_primitive_desc()));
+  this->fwd = std::shared_ptr<mkldnn::convolution_backward_data>(
+    new mkldnn::convolution_backward_data(fwd_pd,
+                                          mkldnn::primitive::at(*this->data),
+                                          mkldnn::primitive::at(*this->weight),
+                                          *this->out));
 }
 
 void MKLDNNDeconvForward::SetDataHandle(const DeconvolutionParam& param,
-    const std::vector<NDArray> &in_data,
-    const std::vector<OpReqType> &req,
-    const std::vector<NDArray> &out_data) {
-    auto data_mem = in_data[deconv::kData].GetMKLDNNDataReorder(
-        fwd_pd.diff_dst_primitive_desc());
-    auto weight_mem = GetWeights(in_data[deconv::kWeight],
-        fwd_pd.weights_primitive_desc(), param.num_group);
-
-    auto out_mem = CreateMKLDNNMem(out_data[deconv::kOut],
-        fwd_pd.diff_src_primitive_desc(), req[deconv::kOut]);
-    auto output = out_mem.second;
-    this->data->set_data_handle(data_mem->get_data_handle());
-    this->weight->set_data_handle(weight_mem->get_data_handle());
-    this->out->set_data_handle(output->get_data_handle());
+                                        const OpContext &ctx,
+                                        const std::vector<NDArray> &in_data,
+                                        const std::vector<OpReqType> &req,
+                                        const std::vector<NDArray> &out_data) {
+  auto data_mem = in_data[deconv::kData].GetMKLDNNDataReorder(
+      fwd_pd.diff_dst_primitive_desc());
+  const mkldnn::memory *weight_mem;
+  if (ctx.is_train) {
+    // TODO(zhengda) kvstore doesn't handle MKLDNN correctly. Let's reorder it
+    // to the default format for now.
+    if (in_data[deconv::kWeight].IsMKLDNN())
+      const_cast<NDArray &>(in_data[deconv::kWeight]).Reorder2Default();
+    weight_mem = GetWeights(in_data[deconv::kWeight],
+                            fwd_pd.weights_primitive_desc(),
+                            param.num_group);
+  } else {
+    // For inference, we want to reorder the weight array so we don't need to
+    // reorder data every time.
+    const_cast<NDArray &>(in_data[deconv::kWeight]).Reorder(
+        fwd_pd.weights_primitive_desc());
+    weight_mem = in_data[deconv::kWeight].GetMKLDNNData();
+  }
+  auto out_mem = CreateMKLDNNMem(out_data[deconv::kOut],
+      fwd_pd.diff_src_primitive_desc(), req[deconv::kOut]);
+  auto output = out_mem.second;
+  this->data->set_data_handle(data_mem->get_data_handle());
+  this->weight->set_data_handle(weight_mem->get_data_handle());
+  this->out->set_data_handle(output->get_data_handle());
 }
 
 void MKLDNNDeconvForward::Execute(const std::vector<OpReqType> &req,
@@ -309,7 +326,7 @@ void MKLDNNDeconvolutionForward(const nnvm::NodeAttrs& attrs, const OpContext &c
       attrs, in_data[deconv::kData], in_data[deconv::kWeight],
       param.no_bias ? nullptr : &in_data[deconv::kBias], out_data[deconv::kOut]);
 
-  deconvFwd.SetDataHandle(param, in_data, req, out_data);
+  deconvFwd.SetDataHandle(param, ctx, in_data, req, out_data);
 
   deconvFwd.Execute(req, out_data);
 
