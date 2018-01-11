@@ -73,12 +73,14 @@ static bool FullyConnectedShape(const nnvm::NodeAttrs& attrs,
   return true;
 }
 
-void FullyConnectedCompute_CPU(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
-    const std::vector<NDArray> &inputs, const std::vector<OpReqType> &req,
-    const std::vector<NDArray> &outputs) {
+void FullyConnectedComputeCPU(const nnvm::NodeAttrs& attrs,
+                              const OpContext &ctx,
+                              const std::vector<NDArray> &inputs,
+                              const std::vector<OpReqType> &req,
+                              const std::vector<NDArray> &outputs) {
 #if MXNET_USE_MKLDNN == 1
   if (SupportMKLDNN(inputs[0])) {
-    MKLDNNFCForward(attrs, ctx, inputs, req, outputs);
+    MKLDNNFullyConnectedCompute(attrs, ctx, inputs, req, outputs);
     return;
   }
 #endif
@@ -91,12 +93,14 @@ void FullyConnectedCompute_CPU(const nnvm::NodeAttrs& attrs, const OpContext &ct
   FullyConnectedCompute<cpu>(attrs, ctx, in_blobs, req, out_blobs);
 }
 
-void FullyConnectedGradCompute_CPU(const nnvm::NodeAttrs& attrs,
-    const OpContext &ctx, const std::vector<NDArray> &inputs,
-    const std::vector<OpReqType> &req, const std::vector<NDArray> &outputs) {
+void FullyConnectedGradComputeCPU(const nnvm::NodeAttrs& attrs,
+                                  const OpContext &ctx,
+                                  const std::vector<NDArray> &inputs,
+                                  const std::vector<OpReqType> &req,
+                                  const std::vector<NDArray> &outputs) {
 #if MXNET_USE_MKLDNN == 1
   if (SupportMKLDNN(inputs[0])) {
-    MKLDNNFCBackward(attrs, ctx, inputs, req, outputs);
+    MKLDNNFullyConnectedGradCompute(attrs, ctx, inputs, req, outputs);
     return;
   }
 #endif
@@ -215,7 +219,7 @@ If ``no_bias`` is set to be true, then the ``bias`` term is ignored.
 .set_attr<nnvm::FInferShape>("FInferShape", FullyConnectedShape)
 .set_attr<nnvm::FInferType>("FInferType", FullyConnectedType)
 .set_attr<FCompute>("FCompute<cpu>", FullyConnectedCompute<cpu>)
-.set_attr<FComputeEx>("FComputeEx<cpu>", FullyConnectedCompute_CPU)
+.set_attr<FComputeEx>("FComputeEx<cpu>", FullyConnectedComputeCPU)
 .set_attr<nnvm::FGradient>("FGradient", FullyConnectedGrad{"_backward_FullyConnected"})
 .add_argument("data", "NDArray-or-Symbol", "Input data.")
 .add_argument("weight", "NDArray-or-Symbol", "Weight matrix.")
@@ -240,7 +244,7 @@ NNVM_REGISTER_OP(_backward_FullyConnected)
 .set_attr<FInferStorageType>("FInferStorageType", BackwardFCStorageType)
 .set_attr_parser(ParamParser<FullyConnectedParam>)
 .set_attr<FCompute>("FCompute<cpu>", FullyConnectedGradCompute<cpu>)
-.set_attr<FComputeEx>("FComputeEx<cpu>", FullyConnectedGradCompute_CPU);
+.set_attr<FComputeEx>("FComputeEx<cpu>", FullyConnectedGradComputeCPU);
 
 }  // namespace op
 }  // namespace mxnet
