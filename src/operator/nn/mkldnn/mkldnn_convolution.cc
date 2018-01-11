@@ -265,7 +265,7 @@ void MKLDNNConvForward::Execute(const std::vector<OpReqType> &req,
                                    const std::vector<NDArray> &out_data) {
   auto out_mem = CreateMKLDNNMem(out_data[conv::kOut], this->fwd_pd.dst_primitive_desc(),
                                  req[conv::kOut]);
- 
+
   MKLDNNStream::Get()->RegisterPrim(*(this->fwd));
   CommitOutput(out_data[conv::kOut], out_mem);
   MKLDNNStream::Get()->Submit();
