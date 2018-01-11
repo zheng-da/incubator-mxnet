@@ -30,14 +30,6 @@
 namespace mxnet {
 namespace op {
 
-struct ElementWiseSumParam : public dmlc::Parameter<ElementWiseSumParam> {
-  int num_args;
-  DMLC_DECLARE_PARAMETER(ElementWiseSumParam) {
-    DMLC_DECLARE_FIELD(num_args).set_lower_bound(1)
-        .describe("Number of inputs to be summed.");
-  }
-};
-
 DMLC_REGISTER_PARAMETER(ElementWiseSumParam);
 
 std::vector<nnvm::NodeEntry> ElementWiseSumGrad(
@@ -123,7 +115,7 @@ void ElementWiseSumComputeExCPU(const nnvm::NodeAttrs& attrs,
     mxnet::ndarray::ElementwiseSum<cpu>(s, rsc, inputs, &out_nd);
 #if MXNET_USE_MKLDNN == 1
   } else if (IsMKLDNN(inputs)) {
-    MKLDNNSumForward(attrs, op_ctx, inputs, req[0], outputs[0]);
+    MKLDNNSumCompute(attrs, op_ctx, inputs, req[0], outputs[0]);
 #endif
   } else if (common::ContainsOnlyStorage(inputs, kDefaultStorage)) {
     // This case happens when we want to create an MKLDNN NDArray but the type

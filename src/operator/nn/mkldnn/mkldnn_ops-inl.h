@@ -77,7 +77,7 @@ void MKLDNNSoftmaxForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                           const NDArray &out_data);
 
 /* For sum */
-void MKLDNNSumForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
+void MKLDNNSumCompute(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                       const std::vector<NDArray> &inputs, const OpReqType &req,
                       const NDArray &out_data);
 
