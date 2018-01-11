@@ -228,6 +228,9 @@ struct SoftmaxParam : public dmlc::Parameter<SoftmaxParam> {
     DMLC_DECLARE_FIELD(axis).set_default(-1)
       .describe("The axis along which to compute softmax.");
   }
+  bool operator==(const SoftmaxParam& other) const {
+    return this->axis == other.axis;
+  }
 };
 
 template<typename xpu, typename OP>
