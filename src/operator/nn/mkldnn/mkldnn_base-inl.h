@@ -387,20 +387,17 @@ typedef std::pair<OutDataOp, mkldnn::memory *> mkldnn_output_t;
  * the output back to the output NDArray.
  */
 mkldnn_output_t CreateMKLDNNMem(const NDArray &arr,
+                                const mkldnn::memory::primitive_desc &desc,
+                                OpReqType req);
+mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &arr,
                                        const mkldnn::memory::primitive_desc &desc,
                                        OpReqType req);
-mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &arr,
-                                                 const mkldnn::memory::primitive_desc &desc,
-                                                 OpReqType req);
 /* This function has to be used with one of the functions above. */
 void CommitOutput(const NDArray &arr, const mkldnn_output_t &res);
 
 const mkldnn::memory *GetWeights(const NDArray &arr,
                                  const mkldnn::memory::primitive_desc &target_pd,
                                  int num_groups);
-const mkldnn::memory *GetWeights(const NDArray &arr,
-                                 const mkldnn::engine &engine,
-                                 int num_groups = 1);
 
 mkldnn_memory_format_t GetDefaultFormat(mkldnn::memory::desc desc);
 mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn::memory::primitive_desc pd,

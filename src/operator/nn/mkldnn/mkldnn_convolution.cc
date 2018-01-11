@@ -187,8 +187,8 @@ class MKLDNNConvForward {
   mkldnn::convolution_forward::primitive_desc fwd_pd;
 
   MKLDNNConvForward(const ConvolutionParam& param, bool is_train,
-                           const NDArray &data, const NDArray &weights,
-                           const NDArray *bias, const NDArray &output);
+                    const NDArray &data, const NDArray &weights,
+                    const NDArray *bias, const NDArray &output);
 
   ~MKLDNNConvForward() {}
 
@@ -334,7 +334,8 @@ void MKLDNNConvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &ct
   auto out_grad_mem = inputs[conv::kOut].GetMKLDNNDataReorder(
       bwdData_pd.diff_dst_primitive_desc());
   if (req[conv::kData]) {
-    auto weight_mem = GetWeights(inputs[conv::kWeight + 1], bwdData_pd.weights_primitive_desc(),
+    auto weight_mem = GetWeights(inputs[conv::kWeight + 1],
+                                 bwdData_pd.weights_primitive_desc(),
                                  param.num_group);
     auto in_grad_mem = CreateMKLDNNMem(in_grad[conv::kData],
         bwdData_pd.diff_src_primitive_desc(), req[conv::kData]);
