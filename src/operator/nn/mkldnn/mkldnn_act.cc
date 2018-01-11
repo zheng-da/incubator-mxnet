@@ -20,7 +20,7 @@
 /*!
  * \file mkldnn_act.cc
  * \brief
- * \author Da Zheng
+ * \author Da Zheng, Rong Zhang (rong.a.zhang@intel.com)
 */
 
 #include <dmlc/logging.h>
@@ -71,8 +71,11 @@ static inline mkldnn::algorithm GetMKLDNNActAlgo(const ActivationParam& param) {
 typedef std::shared_ptr<mkldnn::eltwise_forward::primitive_desc> mkldnn_act_pdesc_ptr;
 
 static mkldnn::eltwise_forward::primitive_desc GetActFwdDescImpl(
-    const ActivationParam& param, bool is_train,
-    const mkldnn::memory &input_mem, int dtype) {
+    const ActivationParam& param,
+    bool is_train,
+    const NDArray &in_data) {
+  int dtype = in_data.dtype();
+  auto input_mem = *(in_data.GetMKLDNNData());
   mkldnn::memory::primitive_desc data_mpd = input_mem.get_primitive_desc();
   mkldnn::memory::desc data_md = data_mpd.desc();
   auto cpu_engine = data_mpd.get_engine();
@@ -95,49 +98,53 @@ static mkldnn::eltwise_forward::primitive_desc GetActFwdDescImpl(
 
 typedef MKLDNNParamOpSign<ActivationParam> MKLDNNActSignature;
 
-class MKLDNNActForward {
+class MKLDNNActivationFwd {
   std::shared_ptr<mkldnn::eltwise_forward> fwd;
   std::shared_ptr<mkldnn::memory> data;
   std::shared_ptr<mkldnn::memory> out;
 
  public:
   const mkldnn::eltwise_forward::primitive_desc fwd_pd;
+  MKLDNNActivationFwd(const ActivationParam& param, bool is_train,
+                     const NDArray &data, const mkldnn::memory &mem);
+  void SetDataHandle(const NDArray &in_data, const NDArray &out_data);
+  void Execute();
+};  // class MKLDNNActivationFwd
 
-  MKLDNNActForward(const ActivationParam& param, bool is_train,
-                   const NDArray &data, const mkldnn::memory &mem): fwd_pd(
-                       GetActFwdDescImpl(param, is_train, mem, data.dtype())) {
-  }
+MKLDNNActivationFwd::MKLDNNActivationFwd(
+    const ActivationParam& param,
+    bool is_train,
+    const NDArray &data,
+    const mkldnn::memory &mem): fwd_pd(GetActFwdDescImpl(param, is_train, data)) {
+  auto input_mem = data.GetMKLDNNData();
+  this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
+    input_mem->get_primitive_desc()));
+  this->out = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
+    fwd_pd.dst_primitive_desc()));
+  this->fwd = std::shared_ptr<mkldnn::eltwise_forward>(
+      new mkldnn::eltwise_forward(fwd_pd, mkldnn::primitive::at(*this->data),
+                                  *this->out));
+}
 
-  void SetNewMem(const mkldnn::memory &data, const mkldnn::memory &output) {
-    if (this->data == nullptr)
-      this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-              data.get_primitive_desc(), data.get_data_handle()));
-    else
-      this->data->set_data_handle(data.get_data_handle());
+void MKLDNNActivationFwd::SetDataHandle(const NDArray &in_data, const NDArray &out_data) {
+  auto input_mem = in_data.GetMKLDNNData();
+  auto out_mem = const_cast<NDArray &>(out_data).CreateMKLDNNData(
+      fwd_pd.dst_primitive_desc());
+  this->data->set_data_handle(input_mem->get_data_handle());
+  this->out->set_data_handle(out_mem->get_data_handle());
+}
 
-    CHECK(fwd_pd.dst_primitive_desc() == output.get_primitive_desc());
-    if (this->out == nullptr)
-      this->out = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-              fwd_pd.dst_primitive_desc(), output.get_data_handle()));
-    else
-      this->out->set_data_handle(output.get_data_handle());
+void MKLDNNActivationFwd::Execute() {
+  MKLDNNStream *stream = MKLDNNStream::Get();
+  stream->RegisterPrim(*fwd);
+  stream->Submit();
+}
 
-    if (this->fwd == nullptr) {
-      this->fwd = std::shared_ptr<mkldnn::eltwise_forward>(
-          new mkldnn::eltwise_forward(fwd_pd, mkldnn::primitive::at(*this->data),
-                                      *this->out));
-    }
-  }
-
-  const mkldnn::eltwise_forward &GetFwd() const {
-    return *fwd;
-  }
-};
-
-static MKLDNNActForward &GetActForward(const ActivationParam& param,
-                                       const OpContext &ctx, const NDArray &in_data,
-                                       const mkldnn::memory &in_mem) {
-  static thread_local std::unordered_map<MKLDNNActSignature, MKLDNNActForward, MKLDNNOpHash> fwds;
+static MKLDNNActivationFwd &GetActivationFwd(const ActivationParam& param,
+                                       const OpContext &ctx, const NDArray &in_data) {
+  auto in_mem = *(in_data.GetMKLDNNData());
+  static thread_local
+    std::unordered_map<MKLDNNActSignature, MKLDNNActivationFwd, MKLDNNOpHash> fwds;
   MKLDNNActSignature key(param);
   key.AddSign(ctx.is_train);
   key.AddSign(param.act_type);
@@ -145,8 +152,8 @@ static MKLDNNActForward &GetActForward(const ActivationParam& param,
 
   auto it = fwds.find(key);
   if (it == fwds.end()) {
-    MKLDNNActForward fwd(param, ctx.is_train, in_data, in_mem);
-    auto ins_ret = fwds.insert(std::pair<MKLDNNActSignature, MKLDNNActForward>(
+    MKLDNNActivationFwd fwd(param, ctx.is_train, in_data, in_mem);
+    auto ins_ret = fwds.insert(std::pair<MKLDNNActSignature, MKLDNNActivationFwd>(
             key, fwd));
     CHECK(ins_ret.second);
     it = ins_ret.first;
@@ -158,14 +165,10 @@ void MKLDNNActivationForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                              const NDArray &in_data, const OpReqType &req,
                              const NDArray &out_data) {
   const ActivationParam& param = nnvm::get<ActivationParam>(attrs.parsed);
-  auto input_mem = in_data.GetMKLDNNData();
-  MKLDNNActForward &fwd = GetActForward(param, ctx, in_data, *input_mem);
-  auto out_mem = const_cast<NDArray &>(out_data).CreateMKLDNNData(
-      fwd.fwd_pd.dst_primitive_desc());
-  fwd.SetNewMem(*input_mem, *out_mem);
-  MKLDNNStream *stream = MKLDNNStream::Get();
-  stream->RegisterPrim(fwd.GetFwd());
-  stream->Submit();
+  MKLDNNActivationFwd &fwd = GetActivationFwd(param, ctx, in_data);
+
+  fwd.SetDataHandle(in_data, out_data);
+  fwd.Execute();
 }
 
 void MKLDNNActivationBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
@@ -215,3 +218,5 @@ void MKLDNNActivationBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx
 }  // namespace mxnet
 
 #endif
+
+
