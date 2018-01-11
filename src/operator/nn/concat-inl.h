@@ -54,6 +54,10 @@ struct ConcatParam : public dmlc::Parameter<ConcatParam> {
     DMLC_DECLARE_FIELD(dim).set_range(0,  4).set_default(1)
     .describe("the dimension to be concated.");
   }
+  bool operator==(const ConcatParam& other) const {
+    return this->num_args == other.num_args &&
+    this->dim == other.dim;
+  }
 };  // struct ConcatParam
 
 template<typename xpu, typename DType>
