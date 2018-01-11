@@ -187,10 +187,8 @@ class MKLDNNConvForward {
   mkldnn::convolution_forward::primitive_desc fwd_pd;
 
   MKLDNNConvForward(const ConvolutionParam& param, bool is_train,
-                    const NDArray &data, const NDArray &weights,
-                    const NDArray *bias, const NDArray &output): fwd_pd(
-                        GetConvFwdImpl(param, is_train, data, weights, bias, output)) {
-  }
+                           const NDArray &data, const NDArray &weights,
+                           const NDArray *bias, const NDArray &output);
 
   ~MKLDNNConvForward() {}
 
@@ -198,8 +196,34 @@ class MKLDNNConvForward {
       const OpContext &ctx, const std::vector<NDArray> &in_data,
       const std::vector<OpReqType> &req, const std::vector<NDArray> &out_data);
 
-  void Execute();
+  void Execute(const std::vector<OpReqType> &req, const std::vector<NDArray> &out_data);
 };  // class MKLDNNConvForward
+
+MKLDNNConvForward::MKLDNNConvForward(const ConvolutionParam& param, bool is_train,
+                      const NDArray &data, const NDArray &weights,
+                      const NDArray *bias, const NDArray &output): fwd_pd(
+                          GetConvFwdImpl(param, is_train, data, weights, bias, output)) {
+  this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
+          fwd_pd.src_primitive_desc()));
+  this->weight = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
+          fwd_pd.weights_primitive_desc()));
+  this->out = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
+          fwd_pd.dst_primitive_desc()));
+  if (bias != nullptr) {
+    this->bias = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
+            fwd_pd.bias_primitive_desc()));
+    this->fwd = std::shared_ptr<mkldnn::convolution_forward>(
+        new mkldnn::convolution_forward(fwd_pd, mkldnn::primitive::at(*this->data),
+                                        mkldnn::primitive::at(*this->weight),
+                                        mkldnn::primitive::at(*this->bias),
+                                        *this->out));
+  } else {
+    this->fwd = std::shared_ptr<mkldnn::convolution_forward>(
+      new mkldnn::convolution_forward(fwd_pd, mkldnn::primitive::at(*this->data),
+                                      mkldnn::primitive::at(*this->weight),
+                                      *this->out));
+  }
+}
 
 void MKLDNNConvForward::SetDataHandle(const nnvm::NodeAttrs &attrs,
     const OpContext &ctx, const std::vector<NDArray> &in_data,
@@ -227,57 +251,24 @@ void MKLDNNConvForward::SetDataHandle(const nnvm::NodeAttrs &attrs,
                                    req[conv::kOut]);
     const mkldnn::memory *bias_mem = nullptr;
     auto output = out_mem.second;
-    if (this->data == nullptr) {
-      this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-              fwd_pd.src_primitive_desc(), data_mem->get_data_handle()));
-    } else {
       this->data->set_data_handle(data_mem->get_data_handle());
-    }
-
-    if (this->weight == nullptr) {
-      this->weight = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-              fwd_pd.weights_primitive_desc(), weight_mem->get_data_handle()));
-    } else {
       this->weight->set_data_handle(weight_mem->get_data_handle());
-    }
-
-    if (this->out == nullptr) {
-      this->out = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-              fwd_pd.dst_primitive_desc(), output->get_data_handle()));
-    } else {
       this->out->set_data_handle(output->get_data_handle());
-    }
 
     if (!param.no_bias) {
       bias_mem = in_data[conv::kBias].GetMKLDNNDataReorder(this->fwd_pd.bias_primitive_desc());
-      if (this->bias == nullptr) {
-        this->bias = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-                fwd_pd.bias_primitive_desc(), bias_mem->get_data_handle()));
-      } else {
         this->bias->set_data_handle(bias_mem->get_data_handle());
       }
-      if (this->fwd == nullptr) {
-        this->fwd = std::shared_ptr<mkldnn::convolution_forward>(
-            new mkldnn::convolution_forward(fwd_pd, mkldnn::primitive::at(*this->data),
-                                            mkldnn::primitive::at(*this->weight),
-                                            mkldnn::primitive::at(*this->bias),
-                                            *this->out));
-      }
-    } else {
-      if (this->fwd == nullptr) {
-        this->fwd = std::shared_ptr<mkldnn::convolution_forward>(
-          new mkldnn::convolution_forward(fwd_pd, mkldnn::primitive::at(*this->data),
-                                          mkldnn::primitive::at(*this->weight),
-                                          *this->out));
-      }
-    }
-
-    CommitOutput(out_data[conv::kOut], out_mem);
 }
 
-void MKLDNNConvForward::Execute() {
-    MKLDNNStream::Get()->RegisterPrim(*(this->fwd));
-    MKLDNNStream::Get()->Submit();
+void MKLDNNConvForward::Execute(const std::vector<OpReqType> &req,
+                                   const std::vector<NDArray> &out_data) {
+  auto out_mem = CreateMKLDNNMem(out_data[conv::kOut], this->fwd_pd.dst_primitive_desc(),
+                                 req[conv::kOut]);
+ 
+  MKLDNNStream::Get()->RegisterPrim(*(this->fwd));
+  CommitOutput(out_data[conv::kOut], out_mem);
+  MKLDNNStream::Get()->Submit();
 }
 
 typedef MKLDNNParamOpSign<ConvolutionParam> MKLDNNConvSignature;
@@ -322,7 +313,7 @@ void MKLDNNConvolutionForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx
       ctx.is_train, in_data[conv::kData], in_data[conv::kWeight],
       param.no_bias ? nullptr : &in_data[conv::kBias], out_data[conv::kOut]);
   fwd.SetDataHandle(attrs, ctx, in_data, req, out_data);
-  fwd.Execute();
+  fwd.Execute(req, out_data);
 }
 
 void MKLDNNConvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,

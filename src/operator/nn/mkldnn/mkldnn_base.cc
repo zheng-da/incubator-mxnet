@@ -93,7 +93,6 @@ mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &arr,
     }
   }
 }
- 
 
 void CommitOutput(const NDArray &arr, const mkldnn_output_t &res) {
   if (res.first == CopyBack) {
@@ -117,7 +116,7 @@ const mkldnn::memory *GetWeights(const NDArray &arr,
   // directly.
   if (mem)
     return mem;
-    
+
   mkldnn::memory::data_type type = get_mkldnn_type(arr.dtype());
   auto engine = CpuEngine::Get()->get_engine();
   if (arr.shape().ndim() == 2) {
@@ -158,7 +157,7 @@ const mkldnn::memory *GetWeights(const NDArray &arr,
   if (mem->get_primitive_desc() == target_pd) {
     return mem;
   }
-  
+
   auto ret = TmpMemMgr::Get()->Alloc(target_pd);
   MKLDNNStream::Get()->RegisterPrim(mkldnn::reorder(*mem, *ret));
   return ret;
