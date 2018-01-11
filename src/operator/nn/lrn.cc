@@ -119,7 +119,6 @@ inline static bool LRNForwardInferStorageType(const nnvm::NodeAttrs& attrs,
   CHECK(!in_attrs->empty());
   *dispatch_mode = DispatchMode::kFCompute;
 #if MXNET_USE_MKLDNN == 1
-  // *dispatch_mode = DispatchMode::kFComputeEx;
   if (dev_mask == mshadow::cpu::kDevMask) {
     *dispatch_mode = DispatchMode::kFComputeEx;
   }
