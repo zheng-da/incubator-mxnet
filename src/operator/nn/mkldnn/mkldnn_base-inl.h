@@ -284,7 +284,6 @@ class MKLDNNOpSignature {
   MKLDNNOpSignature() {
     hash = 0;
   }
-
   /*
    * We provide different methods to add signature to an op.
    * For operations, such as convolutin and fully connected, which determines
@@ -404,7 +403,12 @@ mkldnn_memory_format_t GetDefaultFormat(mkldnn::memory::desc desc);
 mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn::memory::primitive_desc pd,
                                                 mkldnn_memory_format_t format);
 
+mkldnn::convolution_forward::primitive_desc GetConvFwdPd(int dilate_dim, const NDArray *bias,
+    bool is_train, const mkldnn::memory::desc &data_md, const mkldnn::memory::desc &weight_md,
+    const mkldnn::memory::desc &out_md, const mkldnn::memory::dims &strides,
+    const mkldnn::memory::dims &dilates, const mkldnn::memory::dims &padding);
 
 }  // namespace mxnet
 #endif
 #endif  // MXNET_OPERATOR_NN_MKLDNN_MKLDNN_BASE_INL_H_
+
