@@ -60,6 +60,11 @@ struct FullyConnectedParam : public dmlc::Parameter<FullyConnectedParam> {
     DMLC_DECLARE_FIELD(flatten).set_default(true)
     .describe("Whether to collapse all but the first axis of the input data tensor.");
   }
+  bool operator==(const FullyConnectedParam& other) const {
+    return this->num_hidden == other.num_hidden &&
+           this->no_bias == other.no_bias &&
+           this->flatten == other.flatten;
+  }
 };
 
 template<typename xpu, typename DType>

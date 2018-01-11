@@ -42,11 +42,13 @@ namespace mxnet {
 namespace op {
 
 /* For fully connected. */
-void MKLDNNFCForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
+void MKLDNNFullyConnectedCompute(
+                     const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                      const std::vector<NDArray> &in_data,
                      const std::vector<OpReqType> &req,
                      const std::vector<NDArray> &out_data);
-void MKLDNNFCBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
+void MKLDNNFullyConnectedGradCompute(
+                      const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                       const std::vector<NDArray> &inputs,
                       const std::vector<OpReqType> &req,
                       const std::vector<NDArray> &outputs);
