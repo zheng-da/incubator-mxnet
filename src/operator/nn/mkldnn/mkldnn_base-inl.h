@@ -284,7 +284,6 @@ class MKLDNNOpSignature {
   MKLDNNOpSignature() {
     hash = 0;
   }
-
   /*
    * We provide different methods to add signature to an op.
    * For operations, such as convolutin and fully connected, which determines
@@ -380,25 +379,35 @@ typedef std::pair<OutDataOp, mkldnn::memory *> mkldnn_output_t;
  * The difference is that the first function can create MKLDNN memory with
  * special layouts in an NDArray, while the second one can only create MKLDNN
  * memory with default layouts.
+ * If these two functions are used, we have to call CommitOutput to write
+ * the output back to the output NDArray.
  */
 mkldnn_output_t CreateMKLDNNMem(const NDArray &arr,
-                                const mkldnn::memory::primitive_desc &desc,
-                                OpReqType req);
-mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &arr,
                                        const mkldnn::memory::primitive_desc &desc,
                                        OpReqType req);
-
+mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &arr,
+                                                 const mkldnn::memory::primitive_desc &desc,
+                                                 OpReqType req);
+/* This function has to be used with one of the functions above. */
 void CommitOutput(const NDArray &arr, const mkldnn_output_t &res);
 
 const mkldnn::memory *GetWeights(const NDArray &arr,
                                  const mkldnn::memory::primitive_desc &target_pd,
                                  int num_groups);
+const mkldnn::memory *GetWeights(const NDArray &arr,
+                                 const mkldnn::engine &engine,
+                                 int num_groups = 1);
 
 mkldnn_memory_format_t GetDefaultFormat(mkldnn::memory::desc desc);
 mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn::memory::primitive_desc pd,
                                                 mkldnn_memory_format_t format);
 
+mkldnn::convolution_forward::primitive_desc GetConvFwdPd(int dilate_dim, const NDArray *bias,
+    bool is_train, const mkldnn::memory::desc &data_md, const mkldnn::memory::desc &weight_md,
+    const mkldnn::memory::desc &out_md, const mkldnn::memory::dims &strides,
+    const mkldnn::memory::dims &dilates, const mkldnn::memory::dims &padding);
 
 }  // namespace mxnet
 #endif
 #endif  // MXNET_OPERATOR_NN_MKLDNN_MKLDNN_BASE_INL_H_
+

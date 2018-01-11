@@ -70,14 +70,14 @@ mkldnn_output_t CreateMKLDNNMem(const NDArray &arr,
 }
 
 mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &arr,
-                                       const mkldnn::memory::primitive_desc &desc,
-                                       OpReqType req) {
+                                        const mkldnn::memory::primitive_desc &desc,
+                                        OpReqType req) {
   if (kAddTo == req) {
     auto tmp = TmpMemMgr::Get()->Alloc(desc);
     return mkldnn_output_t(OutDataOp::AddBack, tmp);
   } else if (kWriteInplace == req) {
-    auto tmp = TmpMemMgr::Get()->Alloc(desc);
-    return mkldnn_output_t(OutDataOp::CopyBack, tmp);
+     auto tmp = TmpMemMgr::Get()->Alloc(desc);
+     return mkldnn_output_t(OutDataOp::CopyBack, tmp);
   } else {
     auto _desc = desc;
     auto def_format = GetDefaultFormat(_desc.desc());
@@ -93,6 +93,7 @@ mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &arr,
     }
   }
 }
+ 
 
 void CommitOutput(const NDArray &arr, const mkldnn_output_t &res) {
   if (res.first == CopyBack) {
@@ -116,7 +117,7 @@ const mkldnn::memory *GetWeights(const NDArray &arr,
   // directly.
   if (mem)
     return mem;
-
+    
   mkldnn::memory::data_type type = get_mkldnn_type(arr.dtype());
   auto engine = CpuEngine::Get()->get_engine();
   if (arr.shape().ndim() == 2) {
@@ -151,13 +152,54 @@ const mkldnn::memory *GetWeights(const NDArray &arr,
     LOG(FATAL) << "The weight array has an unsupported number of dimensions";
     return nullptr;
   }
-  if (mem == nullptr)
+  if (mem == nullptr) {
     mem = arr.GetMKLDNNDataReorder(target_pd);
-  if (mem->get_primitive_desc() == target_pd) return mem;
-
+  }
+  if (mem->get_primitive_desc() == target_pd) {
+    return mem;
+  }
+  
   auto ret = TmpMemMgr::Get()->Alloc(target_pd);
   MKLDNNStream::Get()->RegisterPrim(mkldnn::reorder(*mem, *ret));
   return ret;
+}
+
+const mkldnn::memory *GetWeights(const NDArray &arr,
+                                 const mkldnn::engine &engine,
+                                 int num_groups) {
+  mkldnn::memory::data_type type = get_mkldnn_type(arr.dtype());
+  if (arr.shape().ndim() == 2) {
+    mkldnn::memory::dims tz = mkldnn::memory::dims{
+      static_cast<int>(arr.shape()[0]), static_cast<int>(arr.shape()[1])};
+    mkldnn::memory::desc md =
+        mkldnn::memory::desc{tz, type, mkldnn::memory::format::oi};
+    mkldnn::memory::primitive_desc pd =
+        mkldnn::memory::primitive_desc{md, engine};
+    return arr.GetMKLDNNData(pd);
+  } else if (arr.shape().ndim() == 4 && num_groups == 1) {
+    mkldnn::memory::dims tz = mkldnn::memory::dims{
+      static_cast<int>(arr.shape()[0]), static_cast<int>(arr.shape()[1]),
+          static_cast<int>(arr.shape()[2]), static_cast<int>(arr.shape()[3])};
+    mkldnn::memory::desc md =
+        mkldnn::memory::desc{tz, type, mkldnn::memory::format::oihw};
+    mkldnn::memory::primitive_desc pd =
+        mkldnn::memory::primitive_desc{md, engine};
+    return arr.GetMKLDNNData(pd);
+  } else if (arr.shape().ndim() == 4) {
+    mkldnn::memory::dims tz = mkldnn::memory::dims{ num_groups,
+      static_cast<int>(arr.shape()[0] / num_groups),
+      static_cast<int>(arr.shape()[1]),
+      static_cast<int>(arr.shape()[2]),
+      static_cast<int>(arr.shape()[3])};
+    mkldnn::memory::desc md =
+        mkldnn::memory::desc{tz, type, mkldnn::memory::format::goihw};
+    mkldnn::memory::primitive_desc pd =
+        mkldnn::memory::primitive_desc{md, engine};
+    return arr.GetMKLDNNData(pd);
+  } else {
+    LOG(FATAL) << "The weight array has an unsupported number of dimensions";
+    return nullptr;
+  }
 }
 
 mkldnn_memory_format_t GetDefaultFormat(mkldnn::memory::desc desc) {
@@ -234,6 +276,42 @@ mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn::memory::primitive_desc p
   return mkldnn::memory::primitive_desc(data_md, pd.get_engine());
 }
 
+mkldnn::convolution_forward::primitive_desc GetConvFwdPd(int dilate_dim, const NDArray *bias,
+    bool is_train, const mkldnn::memory::desc &data_md, const mkldnn::memory::desc &weight_md,
+    const mkldnn::memory::desc &out_md, const mkldnn::memory::dims &strides,
+    const mkldnn::memory::dims &dilates, const mkldnn::memory::dims &padding) {
+  auto prop = is_train ? mkldnn::prop_kind::forward_training : mkldnn::prop_kind::forward_scoring;
+  auto engine = CpuEngine::Get()->get_engine();
+  if (dilate_dim == 0) {
+    if (bias == nullptr) {
+      mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct,
+            data_md, weight_md, out_md, strides, padding, padding, mkldnn::padding_kind::zero);
+      return mkldnn::convolution_forward::primitive_desc(desc, engine);
+    } else {
+      auto bias_md = GetMemDesc(*bias);
+      mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct,
+          data_md, weight_md, bias_md, out_md, strides, padding, padding,
+          mkldnn::padding_kind::zero);
+      return mkldnn::convolution_forward::primitive_desc(desc, engine);
+    }
+  } else {
+    if (bias == nullptr) {
+      mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct,
+          data_md, weight_md, out_md, strides, dilates, padding, padding,
+          mkldnn::padding_kind::zero);
+      return mkldnn::convolution_forward::primitive_desc(desc, engine);
+    } else {
+      auto bias_md = GetMemDesc(*bias);
+      mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct,
+                                             data_md, weight_md, bias_md, out_md, strides,
+                                             dilates, padding, padding,
+                                             mkldnn::padding_kind::zero);
+      return mkldnn::convolution_forward::primitive_desc(desc, engine);
+    }
+  }
+}
+
 }  // namespace mxnet
 
 #endif
+
