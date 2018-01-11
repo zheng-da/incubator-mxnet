@@ -87,8 +87,8 @@ struct BatchNormParam : public dmlc::Parameter<BatchNormParam> {
   }
 
   bool operator==(const BatchNormParam& other) const {
-    return this->eps == other.eps &&
-           this->momentum == other.momentum &&
+    return fabs(this->eps - other.eps) < 1e-8 &&
+           fabs(this->momentum - other.momentum) < 1e-6 &&
            this->fix_gamma == other.fix_gamma &&
            this->use_global_stats == other.use_global_stats &&
            this->output_mean_var == other.output_mean_var &&
