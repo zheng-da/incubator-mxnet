@@ -87,11 +87,11 @@ void MKLDNNCopy(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
     const NDArray &out_data);
 
 /* For concat */
-void MKLDNNConcatForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
+void MKLDNNConcatCompute(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                          const std::vector<NDArray> &in_data,
                          const std::vector<OpReqType> &req,
                          const std::vector<NDArray> &out_data);
-void MKLDNNConcatBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
+void MKLDNNConcatGradCompute(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                           const std::vector<NDArray>& inputs,
                           const std::vector<OpReqType>& req,
                           const std::vector<NDArray>& outputs);
@@ -103,6 +103,11 @@ void MKLDNNActivationForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
 void MKLDNNActivationBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                               const NDArray &out_grad, const NDArray &in_data,
                               const OpReqType &req, const NDArray &in_grad);
+
+/* For convolution_relu */
+void MKLDNNConvolutionReluForward(const nnvm::NodeAttrs& attrs,
+    const OpContext& ctx, const std::vector<NDArray>& in_data,
+    const std::vector<OpReqType>& req, const std::vector<NDArray>& out_data);
 
 void Sum(const mkldnn::memory &arr1, const mkldnn::memory &arr2,
          const mkldnn::memory &out);
