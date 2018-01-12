@@ -60,7 +60,7 @@ class MKLDNNSumFwd {
   void SetDataHandle(const std::vector<NDArray> &inputs,
                      const NDArray &output,
                      const OpReqType &req);
-  void Execute(const NDArray &output, const OpReqType &req);
+  void Execute(const NDArray &output);
 
  private:
   void _Init(const std::vector<NDArray> &inputs);
@@ -69,6 +69,7 @@ class MKLDNNSumFwd {
   std::shared_ptr<mkldnn::sum> fwd;
   std::vector<std::shared_ptr<mkldnn::memory>> in_data;
   std::shared_ptr<mkldnn::memory> out;
+  OutDataOp data_op;
   std::shared_ptr<mkldnn::sum::primitive_desc> fwd_pd;
 };
 
@@ -113,14 +114,13 @@ void MKLDNNSumFwd::SetDataHandle(const std::vector<NDArray> &inputs,
   auto out_mem = CreateMKLDNNMem(output, this->fwd_pd->dst_primitive_desc(),
                                  req);
   this->out->set_data_handle(out_mem.second->get_data_handle());
+  this->data_op = out_mem.first;
 }
 
-void MKLDNNSumFwd::Execute(const NDArray &output, const OpReqType &req) {
+void MKLDNNSumFwd::Execute(const NDArray &output) {
   MKLDNNStream *stream = MKLDNNStream::Get();
   stream->RegisterPrim(*(this->fwd));
-  auto out_mem = CreateMKLDNNMem(output, this->fwd_pd->dst_primitive_desc(),
-                                 req);
-  CommitOutput(output, out_mem);
+  CommitOutput(output, mkldnn_output_t(this->data_op, this->out.get()));
   stream->Submit();
 }
 
@@ -159,7 +159,7 @@ void MKLDNNSumCompute(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
 
   MKLDNNSumFwd &fwd = GetSumFwd(param, ctx, inputs);
   fwd.SetDataHandle(inputs, out_data, req);
-  fwd.Execute(out_data, req);
+  fwd.Execute(out_data);
 }
 
 }  // namespace op
