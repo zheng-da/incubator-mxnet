@@ -98,7 +98,7 @@ class MKLDNNFullyConnectedFwd {
                      const NDArray *bias,
                      const NDArray &output,
                      const OpReqType &req_out);
-  void Execute(const NDArray &output, const OpReqType &req_out);
+  void Execute(const NDArray &output);
 
  private:
   void _Init(const FullyConnectedParam &param, NDArray *data,
@@ -111,6 +111,7 @@ class MKLDNNFullyConnectedFwd {
   std::shared_ptr<mkldnn::memory> weights;
   std::shared_ptr<mkldnn::memory> bias;
   std::shared_ptr<mkldnn::memory> out;
+  OutDataOp data_op;
 };
 
 void MKLDNNFullyConnectedFwd::_Init(const FullyConnectedParam &param,
@@ -200,14 +201,12 @@ void MKLDNNFullyConnectedFwd::SetDataHandle(const FullyConnectedParam &param,
     this->bias->set_data_handle(bias_mem->get_data_handle());
   }
   this->out->set_data_handle(out.second->get_data_handle());
+  this->data_op = out.first;
 }
 
-void MKLDNNFullyConnectedFwd::Execute(const NDArray &output,
-                                      const OpReqType &req_out) {
+void MKLDNNFullyConnectedFwd::Execute(const NDArray &output) {
   MKLDNNStream::Get()->RegisterPrim(*(this->fwd));
-  auto out = CreateMKLDNNMem(output,
-                             this->fwd_pd->dst_primitive_desc(), req_out);
-  CommitOutput(output, out);
+  CommitOutput(output, mkldnn_output_t(this->data_op, this->out.get()));
   MKLDNNStream::Get()->Submit();
 }
 
@@ -258,7 +257,7 @@ void MKLDNNFullyConnectedCompute(const nnvm::NodeAttrs& attrs,
   fwd.SetDataHandle(param, &data, weights,
                     param.no_bias ? nullptr : &in_data[fullc::kBias],
                     output, req_out);
-  fwd.Execute(output, req_out);
+  fwd.Execute(output);
 }
 
 void MKLDNNFullyConnectedGradCompute(const nnvm::NodeAttrs& attrs,
