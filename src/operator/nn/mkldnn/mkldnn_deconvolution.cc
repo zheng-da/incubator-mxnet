@@ -188,6 +188,7 @@ class MKLDNNDeconvForward {
   std::shared_ptr<mkldnn::memory> weight;
   std::shared_ptr<mkldnn::memory> bias;
   std::shared_ptr<mkldnn::memory> out;
+  OutDataOp data_op;
 
  public:
   MKLDNNDeconvForward(const DeconvolutionParam& param,
@@ -201,7 +202,7 @@ class MKLDNNDeconvForward {
                      const std::vector<OpReqType> &req,
                      const std::vector<NDArray> &out_data);
 
-  void Execute(const std::vector<OpReqType> &req, const std::vector<NDArray> &out_data);
+  void Execute(const std::vector<NDArray> &out_data);
 
  private:
   mkldnn::convolution_backward_data::primitive_desc fwd_pd;
@@ -255,21 +256,19 @@ void MKLDNNDeconvForward::SetDataHandle(const DeconvolutionParam& param,
   this->data->set_data_handle(data_mem->get_data_handle());
   this->weight->set_data_handle(weight_mem->get_data_handle());
   this->out->set_data_handle(output->get_data_handle());
+  this->data_op = out_mem.first;
 }
 
-void MKLDNNDeconvForward::Execute(const std::vector<OpReqType> &req,
-                                     const std::vector<NDArray> &out_data) {
-  auto out_mem = CreateMKLDNNMem(out_data[deconv::kOut],
-                                 fwd_pd.diff_src_primitive_desc(),
-                                 req[deconv::kOut]);
-
+void MKLDNNDeconvForward::Execute(const std::vector<NDArray> &out_data) {
   MKLDNNStream::Get()->RegisterPrim(*fwd);
-  CommitOutput(out_data[deconv::kOut], out_mem);
+  CommitOutput(out_data[deconv::kOut], mkldnn_output_t(this->data_op, this->out.get()));
   MKLDNNStream::Get()->Submit();
 }
 
-static void MKLDNNDeconvFwdBiasPostProcess(const DeconvolutionParam& param, const OpContext &ctx,
-    const std::vector<NDArray> &in_data, const std::vector<NDArray> &out_data) {
+static void MKLDNNDeconvFwdBiasPostProcess(const DeconvolutionParam& param,
+                                           const OpContext &ctx,
+                                           const std::vector<NDArray> &in_data,
+                                           const std::vector<NDArray> &out_data) {
   // add bias, broadcast bias to dim 1: channel
   if (!param.no_bias) {
     // MKLDNN only supports float right now.
@@ -328,7 +327,7 @@ void MKLDNNDeconvolutionForward(const nnvm::NodeAttrs& attrs, const OpContext &c
 
   deconvFwd.SetDataHandle(param, ctx, in_data, req, out_data);
 
-  deconvFwd.Execute(req, out_data);
+  deconvFwd.Execute(out_data);
 
   MKLDNNDeconvFwdBiasPostProcess(param, ctx, in_data, out_data);
 }
