@@ -170,7 +170,7 @@ struct DeconvolutionParam : public dmlc::Parameter<DeconvolutionParam> {
       hash = hash * 2 + shape[i];
     return hash;
   }
-  
+
   uint64_t GetHash() const {
     uint64_t hash = 0;
     hash = hash * 2 + ComputeHash(kernel);
@@ -188,7 +188,6 @@ struct DeconvolutionParam : public dmlc::Parameter<DeconvolutionParam> {
     return hash;
   }
 #endif
-
 };
 
 }  // namespace op
