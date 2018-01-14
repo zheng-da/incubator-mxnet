@@ -112,14 +112,14 @@ inline static bool ConcatForwardInferStorageType(const nnvm::NodeAttrs& attrs,
                                                  std::vector<int> *out_attrs) {
   CHECK(!in_attrs->empty());
   CHECK_EQ(out_attrs->size(), 1U);
-#if MXNET_USE_MKLDNN == 1
-  const ConcatParam& param = nnvm::get<ConcatParam>(attrs.parsed);
-  if (dev_mask == mshadow::cpu::kDevMask
-      && common::ContainsOnlyStorage(*in_attrs, kDefaultStorage)
-      && param.dim > 0)
-    *dispatch_mode = DispatchMode::kFComputeEx;
-  else
-#endif
+//#if MXNET_USE_MKLDNN == 1
+//  const ConcatParam& param = nnvm::get<ConcatParam>(attrs.parsed);
+//  if (dev_mask == mshadow::cpu::kDevMask
+//      && common::ContainsOnlyStorage(*in_attrs, kDefaultStorage)
+//      && param.dim > 0)
+//    *dispatch_mode = DispatchMode::kFComputeEx;
+//  else
+//#endif
     *dispatch_mode = DispatchMode::kFCompute;
   (*out_attrs)[0] = kDefaultStorage;
   return true;
@@ -130,15 +130,15 @@ inline static bool BackwardConcatStorageType(const nnvm::NodeAttrs& attrs,
                                              DispatchMode* dispatch_mode,
                                              std::vector<int> *in_attrs,
                                              std::vector<int> *out_attrs) {
-#if MXNET_USE_MKLDNN == 1
-  const ConcatParam& param = nnvm::get<ConcatParam>(attrs.parsed);
-  CHECK_EQ(out_attrs->size(), in_attrs->size() - 1);
-  if (dev_mask == mshadow::cpu::kDevMask
-      && common::ContainsOnlyStorage(*in_attrs, kDefaultStorage)
-      && param.dim > 0)
-    *dispatch_mode = DispatchMode::kFComputeEx;
-  else
-#endif
+//#if MXNET_USE_MKLDNN == 1
+//  const ConcatParam& param = nnvm::get<ConcatParam>(attrs.parsed);
+//  CHECK_EQ(out_attrs->size(), in_attrs->size() - 1);
+//  if (dev_mask == mshadow::cpu::kDevMask
+//      && common::ContainsOnlyStorage(*in_attrs, kDefaultStorage)
+//      && param.dim > 0)
+//    *dispatch_mode = DispatchMode::kFComputeEx;
+//  else
+//#endif
     *dispatch_mode = DispatchMode::kFCompute;
   for (size_t i = 0; i < out_attrs->size(); i++)
     (*out_attrs)[i] = kDefaultStorage;
