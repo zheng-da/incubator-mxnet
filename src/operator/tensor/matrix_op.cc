@@ -218,13 +218,13 @@ static inline bool FlattenStorageType(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(out_attrs->size(), 1);
   bool ret = ElemwiseStorageType<1, 1, false, true, true>(attrs, dev_mask, dispatch_mode,
                                                           in_attrs, out_attrs);
-#if MXNET_USE_MKLDNN == 1
-  if (dev_mask == mshadow::cpu::kDevMask
-      && in_attrs->at(0) == kDefaultStorage
-      && out_attrs->at(0) == kDefaultStorage) {
-    *dispatch_mode = DispatchMode::kFComputeEx;
-  }
-#endif
+//#if MXNET_USE_MKLDNN == 1
+//  if (dev_mask == mshadow::cpu::kDevMask
+//      && in_attrs->at(0) == kDefaultStorage
+//      && out_attrs->at(0) == kDefaultStorage) {
+//    *dispatch_mode = DispatchMode::kFComputeEx;
+//  }
+//#endif
   return ret;
 }
 

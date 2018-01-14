@@ -83,14 +83,14 @@ bool ElementWiseSumForwardInferStorageType(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(out_attrs->size(), 1U);
   bool ret = ElemwiseStorageAttr<false, true, false>(attrs, dev_mask, dispatch_mode,
                                                      in_attrs, out_attrs);
-#if MXNET_USE_MKLDNN == 1
-  // We should always use FComputeEx.
-  if (dev_mask == mshadow::cpu::kDevMask
-      && common::ContainsOnlyStorage(*in_attrs, kDefaultStorage)
-      && out_attrs->at(0) == kDefaultStorage) {
-    *dispatch_mode = DispatchMode::kFComputeEx;
-  }
-#endif
+//#if MXNET_USE_MKLDNN == 1
+//  // We should always use FComputeEx.
+//  if (dev_mask == mshadow::cpu::kDevMask
+//      && common::ContainsOnlyStorage(*in_attrs, kDefaultStorage)
+//      && out_attrs->at(0) == kDefaultStorage) {
+//    *dispatch_mode = DispatchMode::kFComputeEx;
+//  }
+//#endif
   return ret;
 }
 
@@ -121,10 +121,10 @@ void ElementWiseSumComputeExCPU(const nnvm::NodeAttrs& attrs,
         ResourceRequest(ResourceRequest::kTempSpace));
     NDArray out_nd = outputs[0];
     mxnet::ndarray::ElementwiseSum<cpu>(s, rsc, inputs, &out_nd);
-#if MXNET_USE_MKLDNN == 1
-  } else if (IsMKLDNN(inputs)) {
-    MKLDNNSumForward(attrs, op_ctx, inputs, req[0], outputs[0]);
-#endif
+//#if MXNET_USE_MKLDNN == 1
+//  } else if (IsMKLDNN(inputs)) {
+//    MKLDNNSumForward(attrs, op_ctx, inputs, req[0], outputs[0]);
+//#endif
   } else if (common::ContainsOnlyStorage(inputs, kDefaultStorage)) {
     // This case happens when we want to create an MKLDNN NDArray but the type
     // or the shape isn't supported by MKLDNN. In this case, NDArray falls back
