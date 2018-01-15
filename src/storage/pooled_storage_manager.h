@@ -92,7 +92,6 @@ class GPUPooledStorageManager final : public StorageManager {
 };  // class GPUPooledStorageManager
 
 void GPUPooledStorageManager::Alloc(Storage::Handle* handle) {
-  fprintf(stderr, "gpu pooled alloc\n");
   std::lock_guard<std::mutex> lock(Storage::Get()->GetMutex(Context::kGPU));
   size_t size = handle->size + NDEV;
   auto&& reuse_it = memory_pool_.find(size);
@@ -115,6 +114,9 @@ void GPUPooledStorageManager::Alloc(Storage::Handle* handle) {
     reuse_pool.pop_back();
     handle->dptr = ret;
   }
+#if MXNET_USE_MKLDNN == 1
+  fprintf(stderr, "gpu pooled alloc: %p\n", handle->dptr);
+#endif
 }
 
 void GPUPooledStorageManager::Free(Storage::Handle handle) {

@@ -58,8 +58,10 @@ class NaiveStorageManager final : public StorageManager {
 
 template <class DeviceStorage>
 void NaiveStorageManager<DeviceStorage>::Alloc(Storage::Handle* handle) {
-  fprintf(stderr, "naive alloc\n");
   handle->dptr = DeviceStorage::Alloc(handle->size);
+#if MXNET_USE_MKLDNN == 1
+  fprintf(stderr, "naive alloc: %p\n", handle->dptr);
+#endif
 }
 
 template <class DeviceStorage>

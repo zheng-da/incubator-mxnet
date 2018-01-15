@@ -427,9 +427,11 @@ void NDArray::Chunk::SetMKLMem(const TShape &shape, int dtype) {
   }
   fprintf(stderr, "SetMKLMem6\n");
   mkldnn::memory::primitive_desc pd(data_md, cpu_engine);
-  CHECK(shandle.size >= pd.get_size());
-  Mkl_mem_.reset(new mkldnn::memory(pd, shandle.dptr));
   fprintf(stderr, "SetMKLMem7\n");
+  CHECK(shandle.size >= pd.get_size());
+  fprintf(stderr, "SetMKLMem8: %p, ctx: %d\n", shandle.dptr, shandle.ctx.dev_type);
+  Mkl_mem_.reset(new mkldnn::memory(pd, shandle.dptr));
+  fprintf(stderr, "SetMKLMem9\n");
 }
 
 /*
