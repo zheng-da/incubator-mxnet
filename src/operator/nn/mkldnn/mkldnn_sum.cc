@@ -51,23 +51,38 @@ void Sum(const mkldnn::memory &arr1, const mkldnn::memory &arr2,
 void MKLDNNSumForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                       const std::vector<NDArray> &inputs, const OpReqType &req,
                       const NDArray &out_data) {
+  fprintf(stderr, "MKLDNNSum1\n");
   TmpMemMgr::Get()->Init(ctx.requested[0]);
+  fprintf(stderr, "MKLDNNSum2\n");
   std::vector<mkldnn::primitive::at> in_prims;
   std::vector<mkldnn::memory::primitive_desc> in_pds(inputs.size());
+  fprintf(stderr, "MKLDNNSum3\n");
   std::vector<float> scales(inputs.size());
+  fprintf(stderr, "MKLDNNSum4\n");
   for (size_t i = 0; i < inputs.size(); i++) {
+    fprintf(stderr, "MKLDNNSum5\n");
     auto in_mem = inputs[i].GetMKLDNNData();
+    fprintf(stderr, "MKLDNNSum6\n");
     in_prims.push_back(*in_mem);
+    fprintf(stderr, "MKLDNNSum7\n");
     in_pds[i] = in_mem->get_primitive_desc();
+    fprintf(stderr, "MKLDNNSum8\n");
     scales[i] = 1;
   }
+  fprintf(stderr, "MKLDNNSum9\n");
   mkldnn::sum::primitive_desc pdesc(scales, in_pds);
+  fprintf(stderr, "MKLDNNSum10\n");
 
   auto out_mem = CreateMKLDNNMem(out_data, pdesc.dst_primitive_desc(), req);
+  fprintf(stderr, "MKLDNNSum11\n");
   MKLDNNStream *stream = MKLDNNStream::Get();
+  fprintf(stderr, "MKLDNNSum12\n");
   stream->RegisterPrim(mkldnn::sum(pdesc, in_prims, *out_mem.second));
+  fprintf(stderr, "MKLDNNSum13\n");
   CommitOutput(out_data, out_mem);
+  fprintf(stderr, "MKLDNNSum14\n");
   stream->Submit();
+  fprintf(stderr, "MKLDNNSum15\n");
 }
 
 }  // namespace op
