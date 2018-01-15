@@ -798,7 +798,9 @@ class NDArray {
     /*! \brief check if delay alloc is on, do alloc if not yet done */
     inline void CheckAndAlloc(void) {
       if (delay_alloc) {
+        fprintf(stderr, "CheckAndAlloc1\n");
         shandle = Storage::Get()->Alloc(shandle.size, shandle.ctx);
+        fprintf(stderr, "CheckAndAlloc2\n");
 #if MXNET_USE_MKLDNN == 1
         Mkl_mem_ = nullptr;
 #endif

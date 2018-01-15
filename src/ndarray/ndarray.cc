@@ -380,6 +380,7 @@ void NDArray::Chunk::Reorder2Default() {
 }
 
 void NDArray::Chunk::SetMKLMem(const TShape &shape, int dtype) {
+  fprintf(stderr, "SetMKLMem1\n");
   // The shape of the array and the one of the MKL memory may mismatch.
   // For example, if the array stores parameters, the MKL memory may store data
   // in 5 dimensions while the NDArray stores data in 4 dimensions.
@@ -387,6 +388,7 @@ void NDArray::Chunk::SetMKLMem(const TShape &shape, int dtype) {
       && same_shape(shape, dtype, Mkl_mem_->get_primitive_desc().desc())) {
     return;
   }
+  fprintf(stderr, "SetMKLMem2\n");
 
   mkldnn::memory::dims dims;
   // These are shapes supprted by MKLDNN.
@@ -404,6 +406,7 @@ void NDArray::Chunk::SetMKLMem(const TShape &shape, int dtype) {
   } else {
     LOG(FATAL) << "MKLDNN doesn't support " << shape.ndim() << " dimensions";
   }
+  fprintf(stderr, "SetMKLMem3\n");
   mkldnn::memory::format layout = mkldnn::memory::format::format_undef;
   switch (dims.size()) {
     case 1: layout = mkldnn::memory::format::x; break;
@@ -414,15 +417,19 @@ void NDArray::Chunk::SetMKLMem(const TShape &shape, int dtype) {
     // a corresponding format.
     case 5: layout = mkldnn::memory::format::goihw; break;
   }
+  fprintf(stderr, "SetMKLMem4\n");
   mkldnn::memory::desc data_md{dims, get_mkldnn_type(dtype), layout};
   auto cpu_engine = CpuEngine::Get()->get_engine();
   if (shandle.dptr == nullptr) {
+    fprintf(stderr, "SetMKLMem5\n");
     CHECK(delay_alloc);
     CheckAndAlloc();
   }
+  fprintf(stderr, "SetMKLMem6\n");
   mkldnn::memory::primitive_desc pd(data_md, cpu_engine);
   CHECK(shandle.size >= pd.get_size());
   Mkl_mem_.reset(new mkldnn::memory(pd, shandle.dptr));
+  fprintf(stderr, "SetMKLMem7\n");
 }
 
 /*

@@ -119,6 +119,7 @@ class CPUSharedStorageManager final : public StorageManager {
 };  // class CPUSharedStorageManager
 
 void CPUSharedStorageManager::Alloc(Storage::Handle* handle) {
+  fprintf(stderr, "alloc cpu shared\n");
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   std::uniform_int_distribution<> dis(0, std::numeric_limits<int>::max());
   int fid = -1;

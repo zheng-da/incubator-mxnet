@@ -78,6 +78,7 @@ int StorageImpl::num_gpu_device = 0;
 #endif  // MXNET_USE_CUDA
 
 void StorageImpl::Alloc(Storage::Handle* handle) {
+  fprintf(stderr, "storage alloc\n");
   // space already recycled, ignore request
   auto&& device = storage_managers_.at(handle->ctx.dev_type);
   std::shared_ptr<storage::StorageManager> manager = device.Get(
@@ -85,14 +86,17 @@ void StorageImpl::Alloc(Storage::Handle* handle) {
         storage::StorageManager *ptr = nullptr;
         switch (handle->ctx.dev_type) {
           case Context::kCPU: {
+            fprintf(stderr, "create naive manager\n");
             ptr = new storage::NaiveStorageManager<storage::CPUDeviceStorage>();
             break;
           }
           case Context::kCPUShared: {
+            fprintf(stderr, "create shared CPU manager\n");
             ptr = new storage::CPUSharedStorageManager();
             break;
           }
           case Context::kCPUPinned: {
+            fprintf(stderr, "create CPU pinned manager\n");
 #if MXNET_USE_CUDA
             num_gpu_device = 0;
             cudaError_t e = cudaGetDeviceCount(&num_gpu_device);
@@ -110,6 +114,7 @@ void StorageImpl::Alloc(Storage::Handle* handle) {
             break;
           }
           case Context::kGPU: {
+            fprintf(stderr, "create GPU manager\n");
 #if MXNET_USE_CUDA
             CUDA_CALL(cudaGetDeviceCount(&num_gpu_device));
             CHECK_GT(num_gpu_device, 0) << "GPU usage requires at least 1 GPU";
