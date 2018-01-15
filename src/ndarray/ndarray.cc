@@ -497,24 +497,39 @@ const mkldnn::memory *NDArray::GetMKLDNNDataReorder(
 }
 
 const mkldnn::memory *NDArray::GetMKLDNNData() const {
+  fprintf(stderr, "dev type: %d\n", ctx().dev_type);
   CHECK(storage_type() == kDefaultStorage);
   // If this array uses MKLDNN layout and it's a view, we have to change its
   // layout to the default layout.
-  if (IsMKLDNN() && IsView())
+  fprintf(stderr, "GetMKLDNNData1\n");
+  if (IsMKLDNN() && IsView()) {
+    fprintf(stderr, "GetMKLDNNData2\n");
     ptr_->Reorder2Default();
+  }
+  fprintf(stderr, "GetMKLDNNData3\n");
   ptr_->SetMKLMem(IsView() ? ptr_->storage_shape : shape_, dtype_);
+  fprintf(stderr, "GetMKLDNNData4\n");
   // If shandle has data, the data in shandle and Mkl_mem_ should match.
-  if (ptr_->shandle.dptr)
+  if (ptr_->shandle.dptr) {
+    fprintf(stderr, "GetMKLDNNData5\n");
     CHECK(ptr_->shandle.dptr == ptr_->Mkl_mem_->get_data_handle());
+  }
+  fprintf(stderr, "GetMKLDNNData6\n");
   MKLDNNStream::Get()->RegisterMem(ptr_->Mkl_mem_);
+  fprintf(stderr, "GetMKLDNNData7\n");
   auto pd = ptr_->Mkl_mem_->get_primitive_desc();
+  fprintf(stderr, "GetMKLDNNData8\n");
   if (IsView()) {
+    fprintf(stderr, "GetMKLDNNData9\n");
     // Sliced array must use the default layout.
     CHECK_EQ(GetDefaultFormat(pd.desc()), pd.desc().data.format);
   }
+  fprintf(stderr, "GetMKLDNNData10\n");
   if (IsView()) {
+    fprintf(stderr, "GetMKLDNNData11\n");
     void *off_addr = static_cast<char *>(ptr_->Mkl_mem_->get_data_handle())
         + byte_offset_;
+    fprintf(stderr, "GetMKLDNNData12\n");
 
     // Create the primitive desc for the new mkldnn memory.
     mkldnn::memory::dims dims(pd.desc().data.ndims);
@@ -528,9 +543,12 @@ const mkldnn::memory *NDArray::GetMKLDNNData() const {
         pd.desc().data.data_type);
     mkldnn::memory::desc data_md(dims, cpp_type, cpp_format);
     mkldnn::memory::primitive_desc new_pd(data_md, pd.get_engine());
+    fprintf(stderr, "GetMKLDNNData13\n");
 
     std::shared_ptr<mkldnn::memory> ret(new mkldnn::memory(new_pd, off_addr));
+    fprintf(stderr, "GetMKLDNNData14\n");
     MKLDNNStream::Get()->RegisterMem(ret);
+    fprintf(stderr, "GetMKLDNNData15\n");
     return ret.get();
   } else {
     return ptr_->Mkl_mem_.get();
