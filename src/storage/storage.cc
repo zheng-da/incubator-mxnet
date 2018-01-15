@@ -78,7 +78,6 @@ int StorageImpl::num_gpu_device = 0;
 #endif  // MXNET_USE_CUDA
 
 void StorageImpl::Alloc(Storage::Handle* handle) {
-  fprintf(stderr, "storage alloc\n");
   // space already recycled, ignore request
   auto&& device = storage_managers_.at(handle->ctx.dev_type);
   std::shared_ptr<storage::StorageManager> manager = device.Get(
