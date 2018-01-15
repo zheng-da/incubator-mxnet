@@ -642,7 +642,7 @@ class NDArray {
                    std::vector<NDArray>* data,
                    std::vector<std::string>* keys);
 
- private:
+ public:
   friend class Imperative;
   /*! \brief the real data chunk that backs NDArray */
   // shandle is used to store the actual values in the NDArray

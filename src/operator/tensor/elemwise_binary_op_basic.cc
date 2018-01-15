@@ -41,6 +41,10 @@ static void ElemwiseAddEx(const nnvm::NodeAttrs& attrs,
   if (inputs[0].storage_type() == kDefaultStorage
       && inputs[1].storage_type() == kDefaultStorage) {
     fprintf(stderr, "Sum Forward1\n");
+    inputs[0].ptr_->SetMKLMem(inputs[0].shape(), inputs[0].dtype());
+    fprintf(stderr, "Sum Forward2\n");
+    inputs[1].ptr_->SetMKLMem(inputs[1].shape(), inputs[1].dtype());
+    fprintf(stderr, "Sum Forward3\n");
     // This happens if inputs are supposed to be in MKLDNN format
     // but MKLDNN doesn't support the data type or the shape. We're
     // forced to convert it to the default format.
@@ -51,7 +55,7 @@ static void ElemwiseAddEx(const nnvm::NodeAttrs& attrs,
     out_blobs[0] = outputs[0].data();
     ElemwiseBinaryOp::Compute<cpu, op::mshadow_op::plus>(attrs, ctx, in_blobs,
                                                          req, out_blobs);
-    fprintf(stderr, "Sum Forward2\n");
+    fprintf(stderr, "Sum Forward4\n");
     return;
   }
 #endif
