@@ -37,25 +37,25 @@ static void ElemwiseAddEx(const nnvm::NodeAttrs& attrs,
                           const std::vector<NDArray>& outputs) {
   CHECK_EQ(inputs.size(), 2U);
   CHECK_EQ(outputs.size(), 1U);
-//#if MXNET_USE_MKLDNN == 1
-//  if (SupportMKLDNN(inputs[0]) && SupportMKLDNN(inputs[1])) {
-//    MKLDNNSumForward(attrs, ctx, inputs, req[0], outputs[0]);
-//    return;
-//  } else if (inputs[0].storage_type() == kDefaultStorage
-//             && inputs[1].storage_type() == kDefaultStorage) {
-//    // This happens if inputs are supposed to be in MKLDNN format
-//    // but MKLDNN doesn't support the data type or the shape. We're
-//    // forced to convert it to the default format.
-//    std::vector<TBlob> in_blobs(2);
-//    std::vector<TBlob> out_blobs(1);
-//    in_blobs[0] = inputs[0].data();
-//    in_blobs[1] = inputs[1].data();
-//    out_blobs[0] = outputs[0].data();
-//    ElemwiseBinaryOp::Compute<cpu, op::mshadow_op::plus>(attrs, ctx, in_blobs,
-//                                                         req, out_blobs);
-//    return;
-//  }
-//#endif
+#if MXNET_USE_MKLDNN == 1
+  if (SupportMKLDNN(inputs[0]) && SupportMKLDNN(inputs[1])) {
+    MKLDNNSumForward(attrs, ctx, inputs, req[0], outputs[0]);
+    return;
+  } else if (inputs[0].storage_type() == kDefaultStorage
+             && inputs[1].storage_type() == kDefaultStorage) {
+    // This happens if inputs are supposed to be in MKLDNN format
+    // but MKLDNN doesn't support the data type or the shape. We're
+    // forced to convert it to the default format.
+    std::vector<TBlob> in_blobs(2);
+    std::vector<TBlob> out_blobs(1);
+    in_blobs[0] = inputs[0].data();
+    in_blobs[1] = inputs[1].data();
+    out_blobs[0] = outputs[0].data();
+    ElemwiseBinaryOp::Compute<cpu, op::mshadow_op::plus>(attrs, ctx, in_blobs,
+                                                         req, out_blobs);
+    return;
+  }
+#endif
   ElemwiseBinaryOp::ComputeEx<cpu, op::mshadow_op::plus>(attrs, ctx, inputs,
                                                          req, outputs);
 }
@@ -69,13 +69,13 @@ static inline bool ElemwiseAddStorageType(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(out_attrs->size(), 1);
   bool ret = ElemwiseStorageType<2, 1, true, true, true>(attrs, dev_mask, dispatch_mode,
                                                          in_attrs, out_attrs);
-//#if MXNET_USE_MKLDNN == 1
-//  if (dev_mask == mshadow::cpu::kDevMask
-//      && common::ContainsOnlyStorage(*in_attrs, kDefaultStorage)
-//      && out_attrs->at(0) == kDefaultStorage) {
-//    *dispatch_mode = DispatchMode::kFComputeEx;
-//  }
-//#endif
+#if MXNET_USE_MKLDNN == 1
+  if (dev_mask == mshadow::cpu::kDevMask
+      && common::ContainsOnlyStorage(*in_attrs, kDefaultStorage)
+      && out_attrs->at(0) == kDefaultStorage) {
+    *dispatch_mode = DispatchMode::kFComputeEx;
+  }
+#endif
   return ret;
 }
 
