@@ -39,10 +39,13 @@ static void ElemwiseAddEx(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(outputs.size(), 1U);
 #if MXNET_USE_MKLDNN == 1
   if (SupportMKLDNN(inputs[0]) && SupportMKLDNN(inputs[1])) {
+    fprintf(stderr, "MKLDNN Sum Forward1\n");
     MKLDNNSumForward(attrs, ctx, inputs, req[0], outputs[0]);
+    fprintf(stderr, "MKLDNN Sum Forward2\n");
     return;
   } else if (inputs[0].storage_type() == kDefaultStorage
              && inputs[1].storage_type() == kDefaultStorage) {
+    fprintf(stderr, "Sum Forward1\n");
     // This happens if inputs are supposed to be in MKLDNN format
     // but MKLDNN doesn't support the data type or the shape. We're
     // forced to convert it to the default format.
@@ -53,6 +56,7 @@ static void ElemwiseAddEx(const nnvm::NodeAttrs& attrs,
     out_blobs[0] = outputs[0].data();
     ElemwiseBinaryOp::Compute<cpu, op::mshadow_op::plus>(attrs, ctx, in_blobs,
                                                          req, out_blobs);
+    fprintf(stderr, "Sum Forward2\n");
     return;
   }
 #endif
