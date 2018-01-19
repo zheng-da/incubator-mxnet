@@ -78,12 +78,13 @@ GetLRNBwd(const LRNParam &param,
 
 void MKLDNNLRN_Forward(const OpContext &ctx,
                        const LRNParam &param,
+                       const OpReqType req,
                        const NDArray &in_data,
                        const NDArray &out_data) {
-  const auto src_mem = in_data.GetMKLDNNData();
+  auto src_mem = in_data.GetMKLDNNData();
   const auto src_md = src_mem->get_primitive_desc().desc();
   const auto pdesc = GetLRNFwd(param, ctx.is_train, src_md);
-  const auto dst_mem = const_cast<NDArray &>(out_data).CreateMKLDNNData(
+  auto dst_mem = const_cast<NDArray &>(out_data).CreateMKLDNNData(
           pdesc.dst_primitive_desc());
   if (ctx.is_train) {
     std::shared_ptr<const mkldnn::memory> ws_mem(
@@ -108,7 +109,7 @@ void MKLDNNLRN_Backward(const OpContext &ctx, const LRNParam &param,
     return;
   }
   // Repeat FW for getting workspace
-  const auto data_mem = in_data.GetMKLDNNData();
+  auto data_mem = in_data.GetMKLDNNData();
   const auto data_md = data_mem->get_primitive_desc().desc();
   const auto pdesc_fwd = GetLRNFwd(param, ctx.is_train, data_md);
 
@@ -125,10 +126,10 @@ void MKLDNNLRN_Backward(const OpContext &ctx, const LRNParam &param,
           *ws_mem, *dst_temp));
 
   const auto data_in_md = pdesc_fwd.src_primitive_desc().desc();
-  const auto diff_mem = out_grad.GetMKLDNNData();
+  auto diff_mem = out_grad.GetMKLDNNData();
   const auto diff_md = diff_mem->get_primitive_desc().desc();
   const auto pdesc_bwd = GetLRNBwd(param, data_in_md, diff_md, pdesc_fwd);
-  const auto diff_src_mem = CreateMKLDNNMem(in_grad,
+  auto diff_src_mem = CreateMKLDNNMem(in_grad,
           pdesc_bwd.diff_src_primitive_desc(), req);
 
   MKLDNNStream::Get()->RegisterPrim(

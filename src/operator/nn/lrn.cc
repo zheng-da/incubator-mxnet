@@ -125,7 +125,7 @@ void LRNComputeExCPU(const nnvm::NodeAttrs &attrs,
                      const std::vector<NDArray> &outputs) {
   const LRNParam &param = nnvm::get<LRNParam>(attrs.parsed);
   if (SupportMKLDNN(inputs[0])) {
-    MKLDNNLRN_Forward(ctx, param, inputs[0], outputs[0]);
+    MKLDNNLRN_Forward(ctx, param, req[0], inputs[0], outputs[0]);
     return;
   }
   FallBackCompute(LRNCompute<cpu>, attrs, ctx, inputs, req, outputs);
