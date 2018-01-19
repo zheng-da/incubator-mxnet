@@ -78,8 +78,8 @@ GetLRNBwd(const LRNParam &param,
 
 void MKLDNNLRN_Forward(const OpContext &ctx,
                        const LRNParam &param,
-                       const OpReqType req,
                        const NDArray &in_data,
+                       const OpReqType req,
                        const NDArray &out_data) {
   auto src_mem = in_data.GetMKLDNNData();
   const auto src_md = src_mem->get_primitive_desc().desc();
