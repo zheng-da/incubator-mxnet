@@ -73,71 +73,73 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
   }
 
   //using BlobVectorType = typename test::op::CoreOpExecutor<DType, AccReal>::BlobVectorType;
-
-  enum ForwardInputs { kForInData, kForGamma, kForBeta, kForMovingMean, kForMovingVar };
-  enum ForwardOutputs { kForOutData, kForOutMean, kForOutVar };
-
-  enum BackwardInputs { kBackOutGrad, kBackOutGradMean, kBackOutGradVar, kBackData,
-    kBackGamma, kBackBeta, kBackInMovingMean, kBackInMovingVar, kBackOutData, kBackOutMean,
-    kBackOutVar };
-
-  enum WhichArray {
-    kForwardIn,
-    kForwardOut,
-    kBackwardIn,
-    kBackwardOut
+/*
+  enum DataBlobs {
+    kInputData,
+    kOutputData,
+    kOutputGrad,
+    kInputGrad,
+    kGamma,
+    kBeta,
+    kMovingMean,
+    kMovingVar
   };
+*/
+  enum ForwardInputs { kForInData, kForGamma, kForBeta, kForInMovingMean, kForInMovingVar };
+  enum ForwardOutputs { kForOutData, kForOutMean, kForOutVar };
+  enum BackwardOutputs { kBackOutData, kBackOutGamma, kBackOutBeta, kBackOutMovingMean, kBackOutMovingVar };
+  enum BackwardInputs { kBackOutGrad, kBackOutGradMean, kBackOutGradVar, kBackData,
+    kBackGamma, kBackBeta, kBackInMovingMean, kBackInMovingVar, kBackInData, kBackInMean,
+    kBackInVar };
 
-  const NDArray *GetForwardInArray(const int idx) const {
+//  enum WhichArray {
+//    kForwardIn,
+//    kForwardOut,
+//    kBackwardIn,
+//    kBackwardOut
+//  };
+
+  const NDArray *GetForwardInArray(const ForwardInputs idx) const {
     const std::vector<NDArray> &arrs = Super::inputs();
     CHECK_LT(idx, arrs.size());
     return &arrs[idx];
   }
 
-  const NDArray *GetForwardOutArray(const int idx) const {
+  const NDArray *GetForwardOutArray(const ForwardOutputs idx) const {
     const std::vector<NDArray> &arrs = Super::outputs();
     CHECK_LT(idx, arrs.size());
     return &arrs[idx];
   }
 
-  const NDArray *GetBackwardOutArray(const int idx) const {
+  const NDArray *GetBackwardOutArray(const BackwardOutputs idx) const {
     const std::vector<NDArray> &arrs = Super::bwd_outputs();
     CHECK_LT(idx, arrs.size());
     return &arrs[idx];
   }
 
-  const NDArray *GetBackwardInArray(const int idx) const {
+  const NDArray *GetBackwardInArray(const BackwardInputs idx) {
     const std::vector<NDArray> &arrs = Super::bwd_inputs();
-    switch (idx) {
-      case kBackOutGrad:
-        CHECK_LT(kBackOutGrad, arrs.size());
-        return &arrs[kBackOutGrad];
-      case kBackOutGradMean:
-        if (param_.output_mean_var) {
-          CHECK_LT(kBackOutGradMean, arrs.size());
-          return &arrs[kBackOutGradMean];
-        } else {
-          CHECK(false);
-          return nullptr;
-        }
-      case kBackOutGradVar:
-        if (param_.output_mean_var) {
-          return &arrs[kBackOutGradVar];
-        } else {
-          CHECK(false);
-          return nullptr;
-        }
-      default: {
-        const size_t index = param_.output_mean_var ? idx : idx - 2;
-        if(index < arrs.size()) {
-          return &arrs[index];
-        }
-        return nullptr;
-      }
-    }
+    CHECK_LT(idx, arrs.size());
+    return &arrs[idx];
   }
 
-  const TBlob *GetBackwardInBlob(const int idx) const {
+  NDArray *GetArray(const ForwardInputs idx) {
+    return const_cast<NDArray *>(GetForwardInArray(idx));
+  }
+
+  const NDArray *GetArray(const ForwardOutputs idx) {
+    return const_cast<NDArray *>(GetForwardOutArray(idx));
+  }
+
+  const NDArray *GetArray(const BackwardOutputs idx) {
+    return const_cast<NDArray *>(GetBackwardOutArray(idx));
+  }
+
+  NDArray *GetArray(const BackwardInputs idx) {
+    return const_cast<NDArray *>(GetBackwardInArray(idx));
+  }
+
+  const TBlob *GetBackwardInBlob(const BackwardInputs idx) {
     const NDArray * arr = GetBackwardInArray(idx);
     if(arr) {
       return &arr->data();
@@ -145,26 +147,26 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     return nullptr;
   }
 
-  const NDArray *GetArray(const WhichArray wa, const int idx) const {
-    switch(wa) {
-      case kForwardIn:
-        return GetForwardInArray(idx);
-      case kForwardOut:
-        return GetForwardOutArray(idx);
-      case kBackwardIn:
-        return GetBackwardOutArray(idx);
-      case kBackwardOut:
-      default:
-        CHECK(false);  // need to check params
-        return nullptr;
-    }
-  }
+//  const NDArray *GetArray(const WhichArray wa, const int idx) {
+//    switch(wa) {
+//      case kForwardIn:
+//        return GetForwardInArray(idx);
+//      case kForwardOut:
+//        return GetForwardOutArray(idx);
+//      case kBackwardIn:
+//        return GetBackwardOutArray(idx);
+//      case kBackwardOut:
+//      default:
+//        CHECK(false);  // need to check params
+//        return nullptr;
+//    }
+//  }
 
-  inline const TBlob& Blob(const NDArray *arr) const { return arr->data(); }
+  inline const TBlob& Blob(const NDArray *arr) { return arr->data(); }
 
   template<typename EnumType>
-  const TBlob& GetBlob(const WhichArray wa, const EnumType idx) const {
-    return GetArray(wa, idx)->data();
+  const TBlob& GetBlob(const EnumType idx) const {
+    return const_cast<BNOperatorExecutor<DType, AccReal> *>(this)->GetArray(idx)->data();
   }
 
   void resetForward() override {
@@ -218,67 +220,75 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
 
     // Init the moving data (all mean = 0, all var = 1)
     MSHADOW_TYPE_SWITCH(
-      Blob(GetForwardInArray(kForMovingMean)).type_flag_,
+      Blob(GetForwardInArray(kForInMovingMean)).type_flag_,
       DTypeX, {
-        test::fill(Blob(GetForwardInArray(kForMovingMean)), DTypeX(0));
+        test::fill(Blob(GetForwardInArray(kForInMovingMean)), DTypeX(0));
       });
     MSHADOW_TYPE_SWITCH(
-      Blob(GetForwardInArray(kForMovingVar)).type_flag_,
+      Blob(GetForwardInArray(kForInMovingVar)).type_flag_,
       DTypeX, {
-        test::fill(Blob(GetForwardInArray(kForMovingVar)), DTypeX(1));
+        test::fill(Blob(GetForwardInArray(kForInMovingVar)), DTypeX(1));
       });
   }
 
   void resetBackward() override {
     Super::resetBackward();
+
+    // Join aux arrays
+    *GetArray(kBackInMovingMean) = *GetArray(kForInMovingMean);
+    *GetArray(kBackInMovingVar) = *GetArray(kForInMovingVar);
+    *GetArray(kBackGamma) = *GetArray(kForGamma);
+    *GetArray(kBackBeta) = *GetArray(kForBeta);
+    *GetArray(kBackInMean) = *GetArray(kForOutMean);
+    *GetArray(kBackInVar) = *GetArray(kForOutVar);
+    *GetArray(kBackInData) = *GetArray(kForOutData);
+
     // Start by filling all backward inputs and outputs with an arbitrary value
-    for (size_t i = 0, n = Super::bwd_inputs().size(); i < n; ++i) {
-      const TBlob& out = Blob(&Super::bwd_inputs()[i]);
-      const int dtype = out.type_flag_;
-      MSHADOW_TYPE_SWITCH(dtype, DTypeX, { test::fill(out, DTypeX(0.5678)); });
-    }
-    for (size_t i = 0, n = Super::bwd_outputs().size(); i < n; ++i) {
-      const TBlob& out = Blob(&Super::bwd_outputs()[i]);
-      const int dtype = out.type_flag_;
-      MSHADOW_TYPE_SWITCH(dtype, DTypeX, { test::fill(out, DTypeX(0.5678)); });
-    }
-    DType val = -.001;
+//    for (size_t i = 0, n = Super::bwd_inputs().size(); i < n; ++i) {
+//      const TBlob& out = Blob(&Super::bwd_inputs()[i]);
+//      const int dtype = out.type_flag_;
+//      MSHADOW_TYPE_SWITCH(dtype, DTypeX, { test::fill(out, DTypeX(0.5678)); });
+//    }
+//    for (size_t i = 0, n = Super::bwd_outputs().size(); i < n; ++i) {
+//      const TBlob& out = Blob(&Super::bwd_outputs()[i]);
+//      const int dtype = out.type_flag_;
+//      MSHADOW_TYPE_SWITCH(dtype, DTypeX, { test::fill(out, DTypeX(0.5678)); });
+//    }
+
     MSHADOW_TYPE_SWITCH(
-      GetBlob(kBackwardIn, kBackOutGrad).type_flag_,
-      //this->c_.blob_out_grad_[mxnet::op::batchnorm::kOut].type_flag_,
+      GetBlob(kBackOutGrad).type_flag_,
       DTypeX, {
-        test::patternFill<DTypeX>(
-          &GetBlob(kBackwardIn, kBackOutGrad),
-          //&this->c_.blob_out_grad_[mxnet::op::batchnorm::kOut],
-                                  [&val]{ return val += 1; });
+        DType val = -.001;
+        test::patternFill<DTypeX>( &GetBlob(kBackOutGrad), [&val]{ return val += 1; });
       });
 
     // out-grad weights
-    //if (mxnet::op::batchnorm::kGamma < this->c_.blob_out_grad_.size()) {
-    if (GetBackwardInBlob(kBackGamma)) {
-      MSHADOW_TYPE_SWITCH(
-        GetBackwardInBlob(kBackGamma)->type_flag_,
-        //this->c_.blob_out_grad_[mxnet::op::batchnorm::kGamma].type_flag_,
-        DTypeX,
-        { test::try_fill(GetBackwardInBlob(kBackGamma), DTypeX(0.1)); });
-    }
+    MSHADOW_TYPE_SWITCH(
+      GetBlob(kBackGamma).type_flag_,
+      DTypeX,
+      { test::try_fill(&GetBlob(kBackGamma), DTypeX(0.1)); });
 
     // out-grad biases
-    if (GetBackwardInBlob(kBackBeta)) {
-      MSHADOW_TYPE_SWITCH(
-        GetBackwardInBlob(kBackBeta)->type_flag_,
-        //this->c_.blob_out_grad_[mxnet::op::batchnorm::kGamma].type_flag_,
-        DTypeX,
-        { test::try_fill(GetBackwardInBlob(kBackBeta), DTypeX(0.1)); });
-    }
+    MSHADOW_TYPE_SWITCH(
+      GetBlob(kBackBeta).type_flag_,
+      DTypeX,
+      { test::try_fill(&GetBlob(kBackBeta), DTypeX(0.1)); });
 
     // in-grad
-    if(GetBackwardInBlob(kBackOutData)) {
-      MSHADOW_TYPE_SWITCH(
-        GetBackwardInBlob(kBackOutData)->type_flag_,
-        DTypeX,
-        { test::try_fill(GetBackwardInBlob(kBackOutData), DTypeX(0)); });
-    }
+    MSHADOW_TYPE_SWITCH(
+      GetBlob(kBackOutData).type_flag_,
+      DTypeX,
+      { test::try_fill(&GetBlob(kBackOutData), DTypeX(0)); });
+
+//    MSHADOW_TYPE_SWITCH(
+//      GetBlob(kBackInMovingMean).type_flag_,
+//      DTypeX,
+//      { test::try_fill(&GetBlob(kBackInMovingMean), DTypeX(0.5)); });
+//
+//    MSHADOW_TYPE_SWITCH(
+//      GetBlob(kBackInMovingVar).type_flag_,
+//      DTypeX,
+//      { test::try_fill(&GetBlob(kBackInMovingVar), DTypeX(1.25)); });
 
     // in-grad weights
 //    if (mxnet::op::batchnorm::kGamma < this->c_.blob_in_grad_.size()) {
@@ -466,11 +476,10 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
   template <typename ExecutorType1, typename ExecutorType2, typename EnumType>
   static inline bool compare(const ExecutorType1& i1,
                              const ExecutorType2& i2,
-                             const typename ExecutorType1::WhichArray wa,
                              const EnumType idx,
                              bool print = false) {
-    const TBlob& b1 = i1.GetBlob(wa, idx);
-    const TBlob& b2 = i2.GetBlob(wa, idx);
+    const TBlob& b1 = i1.GetBlob(idx);
+    const TBlob& b2 = i2.GetBlob(idx);
     if (print && test::debug_output) {
       test::print(RunContext(), &(std::cout << "Blob 1:"), b1, true, true);
       test::print(RunContext(), &(std::cout << "Blob 2:"), b2, true, true);
@@ -482,9 +491,10 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
   template<typename BNOperatorProp>
   static void validateForward(const BNOperatorProp& data) {
     //const TBlob& outputBlob = data.output_blobs()[mxnet::op::batchnorm::kData];
-    const TBlob& outputBlob = data.GetBlob(BNOperatorProp::kForwardOut,
-                                           BNOperatorProp::kForOutData);
-    test::print(RunContext(), &(std::cout << "Fwd Output Blob:"), outputBlob, true, true);
+    const TBlob &outputBlob = data.GetBlob(BNOperatorProp::kForOutData);
+    if (test::debug_output) {
+      test::print(RunContext(), &(std::cout << "Fwd Output Blob:"), outputBlob, true, true);
+    }
     switch (outputBlob.ndim()) {
       case 3:
         checkBatchNorm1D(&outputBlob);
@@ -508,51 +518,43 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
     const test::op::OpInfo<PropType2, BNOperatorExecutor<DType, AccReal>>& info_2) {
     // Input
     EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                        BNOperatorExecutor<DType, AccReal>::kForwardIn,
                         BNOperatorExecutor<DType, AccReal>::kForInData));
     EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                        BNOperatorExecutor<DType, AccReal>::kForwardIn,
                         BNOperatorExecutor<DType, AccReal>::kForGamma));
     EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                        BNOperatorExecutor<DType, AccReal>::kForwardIn,
                         BNOperatorExecutor<DType, AccReal>::kForBeta));
     // Output
     EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                        BNOperatorExecutor<DType, AccReal>::kForwardOut,
                         BNOperatorExecutor<DType, AccReal>::kForOutData));
     CHECK_EQ(info_2.prop_->getParam().use_global_stats,
              info_1.prop_->getParam().use_global_stats);
 
-#if 0
 #if MXNET_USE_CUDNN != 1 /* CUDNN takes a different approach here on first pass */
     // Aux
     EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                        test::op::CoreOpExecutor<DType>::kAux,
-                        mxnet::op::batchnorm::kMovingMean));
+                          BNOperatorExecutor<DType, AccReal>::kBackwardOut,
+                          BNOperatorExecutor<DType, AccReal>::kForInMovingMean));
     EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                        test::op::CoreOpExecutor<DType>::kAux,
-                        mxnet::op::batchnorm::kMovingVar));
+                          BNOperatorExecutor<DType, AccReal>::kBackwardOut,
+                          BNOperatorExecutor<DType, AccReal>::kForInMovingVar));
 #endif
+
     if (!info_2.prop_->getParam().use_global_stats) {
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          test::op::CoreOpExecutor<DType>::kOutput,
-                          mxnet::op::batchnorm::kMean));
+                          BNOperatorExecutor<DType, AccReal>::kBackInMean));
+      EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
+                          BNOperatorExecutor<DType, AccReal>::kBackInVar));
       // InGrad
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          test::op::CoreOpExecutor<DType>::kInGrad,
-                          mxnet::op::batchnorm::kData));
+                          BNOperatorExecutor<DType, AccReal>::kForInData));
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          test::op::CoreOpExecutor<DType>::kInGrad,
-                          mxnet::op::batchnorm::kGamma));
+                          BNOperatorExecutor<DType, AccReal>::kBackGamma));
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          test::op::CoreOpExecutor<DType>::kInGrad,
-                          mxnet::op::batchnorm::kBeta));
+                          BNOperatorExecutor<DType, AccReal>::kBackBeta));
       // OutGrad
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          test::op::CoreOpExecutor<DType>::kOutGrad,
-                          mxnet::op::batchnorm::kData));
+                          BNOperatorExecutor<DType, AccReal>::kBackData));
     }
-#endif
   }
 };
 
@@ -745,9 +747,7 @@ static test::op::OpInfoPair<OperatorProp1, OperatorProp2, OperatorExecutor> test
 
     BatchNormValidator<DType, AccReal>::compare(
       *info_1.executor_, *info_2.executor_,
-      OperatorExecutor::kForwardIn, OperatorExecutor::kForInData,
-      //test::op::CoreOpExecutor<DType>::kInput,
-      //mxnet::op::batchnorm::kData,
+      OperatorExecutor::kForInData,
       false);
 
     if (!thisCount) {
