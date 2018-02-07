@@ -65,9 +65,11 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
   using Super = typename test::op::CoreOpExecutor<DType, AccReal>;
  public:
   BNOperatorExecutor(const bool isGPU, const TShape& inputShape,
+                     const test::op::kwargs_t& kwargs,
                      const bool hasWeightAndBias = false)
     : test::op::CoreOpExecutor<DType, AccReal>(isGPU, { inputShape })
       , hasWeightAndBias_(hasWeightAndBias) {
+    param_.Init(kwargs);
   }
 
   //using BlobVectorType = typename test::op::CoreOpExecutor<DType, AccReal>::BlobVectorType;
@@ -104,14 +106,14 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     return &arrs[idx];
   }
 
-  const NDArray *GetBackwardInArray(const op::BatchNormParam& param, const int idx) const {
+  const NDArray *GetBackwardInArray(const int idx) const {
     const std::vector<NDArray> &arrs = Super::bwd_inputs();
     switch (idx) {
       case kBackOutGrad:
         CHECK_LT(kBackOutGrad, arrs.size());
         return &arrs[kBackOutGrad];
       case kBackOutGradMean:
-        if (param.output_mean_var) {
+        if (param_.output_mean_var) {
           CHECK_LT(kBackOutGradMean, arrs.size());
           return &arrs[kBackOutGradMean];
         } else {
@@ -119,15 +121,28 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
           return nullptr;
         }
       case kBackOutGradVar:
-        if (param.output_mean_var) {
+        if (param_.output_mean_var) {
           return &arrs[kBackOutGradVar];
         } else {
           CHECK(false);
           return nullptr;
         }
-      default:
-        return &arrs[param.output_mean_var ? idx : idx - 2];
+      default: {
+        const size_t index = param_.output_mean_var ? idx : idx - 2;
+        if(index < arrs.size()) {
+          return &arrs[index];
+        }
+        return nullptr;
+      }
     }
+  }
+
+  const TBlob *GetBackwardInBlob(const int idx) const {
+    const NDArray * arr = GetBackwardInArray(idx);
+    if(arr) {
+      return &arr->data();
+    }
+    return nullptr;
   }
 
   const NDArray *GetArray(const WhichArray wa, const int idx) const {
@@ -234,31 +249,37 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
       const int dtype = out.type_flag_;
       MSHADOW_TYPE_SWITCH(dtype, DTypeX, { test::fill(out, DTypeX(0.5678)); });
     }
-    /*
     DType val = -.001;
     MSHADOW_TYPE_SWITCH(
-      this->c_.blob_out_grad_[mxnet::op::batchnorm::kOut].type_flag_,
+      GetBlob(kBackwardIn, kBackOutGrad).type_flag_,
+      //this->c_.blob_out_grad_[mxnet::op::batchnorm::kOut].type_flag_,
       DTypeX, {
-        test::patternFill<DTypeX>(&this->c_.blob_out_grad_[mxnet::op::batchnorm::kOut],
+        test::patternFill<DTypeX>(
+          &GetBlob(kBackwardIn, kBackOutGrad),
+          //&this->c_.blob_out_grad_[mxnet::op::batchnorm::kOut],
                                   [&val]{ return val += 1; });
       });
 
     // out-grad weights
-    if (mxnet::op::batchnorm::kGamma < this->c_.blob_out_grad_.size()) {
+    //if (mxnet::op::batchnorm::kGamma < this->c_.blob_out_grad_.size()) {
+    if (GetBackwardInBlob(kBackGamma)) {
       MSHADOW_TYPE_SWITCH(
-        this->c_.blob_out_grad_[mxnet::op::batchnorm::kGamma].type_flag_,
+        GetBackwardInBlob(kBackGamma)->type_flag_,
+        //this->c_.blob_out_grad_[mxnet::op::batchnorm::kGamma].type_flag_,
         DTypeX,
-        { test::try_fill(this->c_.blob_out_grad_, mxnet::op::batchnorm::kGamma, DTypeX(0.1)); });
+        { test::try_fill(GetBackwardInBlob(kBackGamma), DTypeX(0.1)); });
     }
 
     // out-grad biases
-    if (mxnet::op::batchnorm::kBeta < this->c_.blob_out_grad_.size()) {
+    if (GetBackwardInBlob(kBackBeta)) {
       MSHADOW_TYPE_SWITCH(
-        this->c_.blob_out_grad_[mxnet::op::batchnorm::kBeta].type_flag_,
+        GetBackwardInBlob(kBackBeta)->type_flag_,
+        //this->c_.blob_out_grad_[mxnet::op::batchnorm::kGamma].type_flag_,
         DTypeX,
-        { test::try_fill(this->c_.blob_out_grad_, mxnet::op::batchnorm::kBeta, DTypeX(0.1)); });
+        { test::try_fill(GetBackwardInBlob(kBackBeta), DTypeX(0.1)); });
     }
 
+    /*
     // in-grad
     MSHADOW_TYPE_SWITCH(
       this->c_.blob_in_grad_[mxnet::op::batchnorm::kData].type_flag_,
@@ -284,6 +305,7 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
   }
 
   const bool hasWeightAndBias_;  // This will cause forward pass validation to fail
+  op::BatchNormParam param_;
 };
 
 /*! \brief Validate batch norm test outputs */
@@ -661,7 +683,7 @@ static test::op::OpInfo<OperatorProp, OperatorExecutor> TestBatchNormOperatorFor
   test::op::OpInfo<OperatorProp, OperatorExecutor> info = test::op::createOpAndInfoF<
     OperatorProp, OperatorExecutor>(
     OperatorExecutor::ArgsWithOpName(kwargs, "BatchNorm", "_backward_BatchNorm"),
-    isGPU, inputShape);
+    isGPU, inputShape, kwargs);
 
   info.executor_->initForward(*info.prop_, &info.in_type_);
 
