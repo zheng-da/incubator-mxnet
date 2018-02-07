@@ -227,9 +227,6 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
       DTypeX, {
         test::fill(Blob(GetForwardInArray(kForMovingVar)), DTypeX(1));
       });
-
-      test::print(RunContext(), &std::cout, GetBlob(kForwardIn, kForGamma));
-      test::print(RunContext(), &std::cout, GetBlob(kForwardIn, kForBeta));
   }
 
   void resetBackward() override {
@@ -275,29 +272,29 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
         { test::try_fill(GetBackwardInBlob(kBackBeta), DTypeX(0.1)); });
     }
 
-    /*
     // in-grad
-    MSHADOW_TYPE_SWITCH(
-      this->c_.blob_in_grad_[mxnet::op::batchnorm::kData].type_flag_,
-      DTypeX,
-      { test::try_fill(this->c_.blob_in_grad_, mxnet::op::batchnorm::kData, DTypeX(0)); });
+    if(GetBackwardInBlob(kBackOutData)) {
+      MSHADOW_TYPE_SWITCH(
+        GetBackwardInBlob(kBackOutData)->type_flag_,
+        DTypeX,
+        { test::try_fill(GetBackwardInBlob(kBackOutData), DTypeX(0)); });
+    }
 
     // in-grad weights
-    if (mxnet::op::batchnorm::kGamma < this->c_.blob_in_grad_.size()) {
-      MSHADOW_TYPE_SWITCH(
-        this->c_.blob_in_grad_[mxnet::op::batchnorm::kGamma].type_flag_,
-        DTypeX,
-        { test::try_fill(this->c_.blob_in_grad_, mxnet::op::batchnorm::kGamma, DTypeX(0)); });
-    }
-
-    // in-grad biases
-    if (mxnet::op::batchnorm::kBeta < this->c_.blob_in_grad_.size()) {
-      MSHADOW_TYPE_SWITCH(
-        this->c_.blob_in_grad_[mxnet::op::batchnorm::kBeta].type_flag_,
-        DTypeX,
-        { test::try_fill(this->c_.blob_in_grad_, mxnet::op::batchnorm::kBeta, DTypeX(0)); });
-    }
-    */
+//    if (mxnet::op::batchnorm::kGamma < this->c_.blob_in_grad_.size()) {
+//      MSHADOW_TYPE_SWITCH(
+//        this->c_.blob_in_grad_[mxnet::op::batchnorm::kGamma].type_flag_,
+//        DTypeX,
+//        { test::try_fill(this->c_.blob_in_grad_, mxnet::op::batchnorm::kGamma, DTypeX(1)); });
+//    }
+//
+//    // in-grad biases
+//    if (mxnet::op::batchnorm::kBeta < this->c_.blob_in_grad_.size()) {
+//      MSHADOW_TYPE_SWITCH(
+//        this->c_.blob_in_grad_[mxnet::op::batchnorm::kBeta].type_flag_,
+//        DTypeX,
+//        { test::try_fill(this->c_.blob_in_grad_, mxnet::op::batchnorm::kBeta, DTypeX(0)); });
+//    }
   }
 
   const bool hasWeightAndBias_;  // This will cause forward pass validation to fail
