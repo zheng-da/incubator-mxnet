@@ -168,6 +168,7 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
   }
 
   void resetForward() override {
+    Super::resetForward();
     // Start by filling all inputs and outputs with an arbitrary value
     for (size_t i = 0, n = Super::inputs().size(); i < n; ++i) {
       const TBlob& out = Blob(&Super::inputs()[i]);
@@ -182,20 +183,17 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     // Init input data
     MSHADOW_TYPE_SWITCH(
       Blob(GetForwardInArray(kForInData)).type_flag_,
-      //this->c_.blob_input_vec_[mxnet::op::batchnorm::kData].type_flag_,
       DTypeX,
       {
         DTypeX val = 0;
         test::patternFill<DTypeX>(
           &Blob(GetForwardInArray(kForInData)),
-          //&this->c_.blob_input_vec_[mxnet::op::batchnorm::kData],
-          [&val]{ return val += 1; }); });
+          [&val]{ return val += 1; });
+      });
 
     MSHADOW_TYPE_SWITCH(
       Blob(GetForwardInArray(kForGamma)).type_flag_,
-      //this->c_.blob_input_vec_[mxnet::op::batchnorm::kGamma].type_flag_,
       DTypeX, {
-        //const TBlob& blob = this->c_.blob_input_vec_[mxnet::op::batchnorm::kGamma];
         const TBlob& blob = Blob(GetForwardInArray(kForGamma));
         test::fill(blob, DTypeX(1));
         if (hasWeightAndBias_) {
@@ -206,9 +204,7 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
       });
     MSHADOW_TYPE_SWITCH(
       Blob(GetForwardInArray(kForBeta)).type_flag_,
-      //this->c_.blob_input_vec_[mxnet::op::batchnorm::kBeta].type_flag_,
       DTypeX, {
-        //const TBlob& blob = this->c_.blob_input_vec_[mxnet::op::batchnorm::kBeta];
         const TBlob& blob = Blob(GetForwardInArray(kForBeta));
         if (!hasWeightAndBias_) {
           test::fill(blob, DTypeX(0));
@@ -222,22 +218,22 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
 
     // Init the moving data (all mean = 0, all var = 1)
     MSHADOW_TYPE_SWITCH(
-      //this->c_.blob_aux_states_[mxnet::op::batchnorm::kMovingMean].type_flag_,
       Blob(GetForwardInArray(kForMovingMean)).type_flag_,
       DTypeX, {
         test::fill(Blob(GetForwardInArray(kForMovingMean)), DTypeX(0));
-        //test::fill(this->c_.blob_aux_states_[mxnet::op::batchnorm::kMovingMean], DTypeX(0));
       });
     MSHADOW_TYPE_SWITCH(
       Blob(GetForwardInArray(kForMovingVar)).type_flag_,
-      //this->c_.blob_aux_states_[mxnet::op::batchnorm::kMovingVar].type_flag_,
       DTypeX, {
-        //test::fill(this->c_.blob_aux_states_[mxnet::op::batchnorm::kMovingVar], DTypeX(1));});
         test::fill(Blob(GetForwardInArray(kForMovingVar)), DTypeX(1));
-    });
+      });
+
+      test::print(RunContext(), &std::cout, GetBlob(kForwardIn, kForGamma));
+      test::print(RunContext(), &std::cout, GetBlob(kForwardIn, kForBeta));
   }
 
   void resetBackward() override {
+    Super::resetBackward();
     // Start by filling all backward inputs and outputs with an arbitrary value
     for (size_t i = 0, n = Super::bwd_inputs().size(); i < n; ++i) {
       const TBlob& out = Blob(&Super::bwd_inputs()[i]);

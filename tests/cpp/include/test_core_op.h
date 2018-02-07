@@ -225,40 +225,6 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
   }
 
  public:
-  enum BlobVectorType {
-    kInput,
-    kOutput,
-    kAux,
-    kInGrad,
-    kOutGrad,
-    kBlobVectorTypeCount
-  };
-
-#define CASE_STR(__v$) case (__v$): return #__v$
-
-  /*! \brief Convert BlobVectorType enum into a string */
-  static inline const char *bvt2String(const BlobVectorType bvt) {
-    switch (bvt) {
-      CASE_STR(kInput);
-      CASE_STR(kOutput);
-      CASE_STR(kAux);
-      CASE_STR(kInGrad);
-      CASE_STR(kOutGrad);
-      default:
-        CHECK(false);
-        return "";
-    }
-  }
-#undef CASE_STR
-
-  inline const std::vector<TBlob>& getBlobVect(const BlobVectorType bvt) const {
-    // Not implemented
-    CHECK(false);
-    static std::vector<TBlob> dummy;
-    return dummy;
-  }
-
-
   typedef DType   DataType;
   typedef AccReal AccRealType;
 
@@ -333,15 +299,6 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
     //std::vector<bool> *p_save_inputs,
     //std::vector<bool> *p_save_outputs
   ) {
-
-    const Op* op = node->op();
-    if(op) {
-      if(!op->name.empty()) {
-        if(op->name == "BatchNorm") {
-          std::cout << "Imperative::GetBackwardDependency( " << op->name << " )" << std::endl;
-        }
-      }
-    }
 
     static auto& fgradient = nnvm::Op::GetAttr<nnvm::FGradient>("FGradient");
 //    std::vector<bool>& save_inputs = *p_save_inputs;
@@ -591,11 +548,15 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
   template<typename OpProp>
   inline bool initForward(const OpProp &opProp, std::vector<int> *in_type) {
     Init(opProp.GetArgs());
+    resetForward();
     return true;
   }
 
   template<typename OpProp>
-  inline bool initBackward(const OpProp &opProp, std::vector<int> *in_type) { return true; }
+  inline bool initBackward(const OpProp &opProp, std::vector<int> *in_type) {
+    resetBackward();
+    return true;
+  }
 
   inline void forward(const size_t count) {
     perf::TimingItem timeF(&OperatorExecutorTiming::GetTiming(), kForward, "Forward", count);
@@ -726,13 +687,9 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
     verbose_ = verbose;
   }
 
-  virtual void resetForward() {
-    CHECK(false) << "Not implemented, generally inits forward-pass data";
-  }
+  virtual void resetForward() {}
 
-  virtual void resetBackward() {
-    CHECK(false) << "Not implemented, generally inits backward-pass data";
-  }
+  virtual void resetBackward() {}
 
  private:
   /*!
