@@ -154,27 +154,24 @@ constexpr const size_t MPRINT_PRECISION = 5;
 
 template<typename DType>
 inline void fill(const TBlob& blob, const DType val) {
-  DType *p1 = blob.dptr<DType>();
-  for (size_t i = 0, n = blob.Size(); i < n; ++i) {
-    *p1++ = val;
-  }
+  MSHADOW_TYPE_SWITCH(blob.type_flag_, DTypeX, {
+    DTypeX *p1 = blob.dptr<DTypeX>();
+    for (size_t i = 0, n = blob.Size(); i < n; ++i) {
+      *p1++ = val;
+    }
+  });
 }
 
 template<typename DType>
 inline void try_fill(const TBlob *blob, const DType val) {
   if(blob) {
-    DType *p1 = blob->dptr<DType>();
-    for (size_t i = 0, n = blob->Size(); i < n; ++i) {
-      *p1++ = val;
-    }
-  }
-}
+    MSHADOW_TYPE_SWITCH(blob->type_flag_, DTypeX, {
+      DTypeX *p1 = blob->dptr<DTypeX>();
+      for (size_t i = 0, n = blob->Size(); i < n; ++i) {
+        *p1++ = val;
+      }
 
-template<typename DType>
-inline void fill(const TBlob& blob, const DType *valArray) {
-  DType *p1 = blob.dptr<DType>();
-  for (size_t i = 0, n = blob.Size(); i < n; ++i) {
-    *p1++ = *valArray++;
+    });
   }
 }
 
@@ -553,9 +550,9 @@ inline std::string type_name() { return demangle(typeid(T).name()); }
  *  2D: batch item -> channel -> row -> col
  *  3D: batch item -> channel -> col
  */
-template<typename DType, typename GetNextData>
+template<typename GetNextData>
 static inline void patternFill(const TBlob *blob, GetNextData getNextData) {
-  const size_t dim = blob->ndim();
+  const size_t dim = static_cast<size_t>(blob->ndim());
   CHECK_LE(dim, 5U) << "Will need to handle above 3 dimensions (another for loop)";
   const size_t num = blob->size(0);
   const size_t channels = dim > 1 ? blob->size(1) : 1;
@@ -575,8 +572,10 @@ static inline void patternFill(const TBlob *blob, GetNextData getNextData) {
                     if (dim == 5) {
                       const size_t idx = test::offset(blob->shape_, {n, ch, d, row, col});
                       CHECK_LT(idx, numberOfIndexes);
-                      DType &f = blob->dptr<DType>()[idx];
-                      f = getNextData();
+                      MSHADOW_TYPE_SWITCH(blob->type_flag_, ThisDataType, {
+                        ThisDataType &f = blob->dptr<ThisDataType>()[idx];
+                        f = getNextData();
+                      });
                     } else {
                       CHECK(dim <= 5) << "Unimplemented dimension: " << dim;
                     }
@@ -584,29 +583,37 @@ static inline void patternFill(const TBlob *blob, GetNextData getNextData) {
                 } else {
                   const size_t idx = test::offset(blob->shape_, {n, ch, d, row});
                   CHECK_LT(idx, numberOfIndexes);
-                  DType &f = blob->dptr<DType>()[idx];
-                  f = getNextData();
+                  MSHADOW_TYPE_SWITCH(blob->type_flag_, ThisDataType, {
+                    ThisDataType &f = blob->dptr<ThisDataType>()[idx];
+                    f = getNextData();
+                  });
                 }
               }
             } else {
               const size_t idx = test::offset(blob->shape_, {n, ch, d});
               CHECK_LT(idx, numberOfIndexes);
-              DType &f = blob->dptr<DType>()[idx];
-              f = getNextData();
+              MSHADOW_TYPE_SWITCH(blob->type_flag_, ThisDataType, {
+                ThisDataType &f = blob->dptr<ThisDataType>()[idx];
+                f = getNextData();
+              });
             }
           }
         } else {
           const size_t idx = test::offset(blob->shape_, {n, ch});
           CHECK_LT(idx, numberOfIndexes);
-          DType &f = blob->dptr<DType>()[idx];
-          f = getNextData();
+          MSHADOW_TYPE_SWITCH(blob->type_flag_, ThisDataType, {
+            ThisDataType &f = blob->dptr<ThisDataType>()[idx];
+            f = getNextData();
+          });
         }
       }
     } else {
       const size_t idx = test::offset(blob->shape_, {n});
       CHECK_LT(idx, numberOfIndexes);
-      DType &f = blob->dptr<DType>()[idx];
-      f = getNextData();
+      MSHADOW_TYPE_SWITCH(blob->type_flag_, ThisDataType, {
+        ThisDataType &f = blob->dptr<ThisDataType>()[idx];
+        f = getNextData();
+      });
     }
   }
 }

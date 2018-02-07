@@ -105,7 +105,7 @@ class OperatorDataInitializer {
 #pragma clang diagnostic ignored "-Wabsolute-value"
     std::uniform_real_distribution<> dis_real(-5.0, 5.0);
     std::uniform_int_distribution<> dis_int(-128, 127);
-    test::patternFill<DType>(&blob, [this, &dis_real, &dis_int]() -> DType {
+    test::patternFill(&blob, [this, &dis_real, &dis_int]() -> DType {
       if (!std::is_integral<DType>::value) {
         DType val;
         do {
@@ -124,7 +124,7 @@ class OperatorDataInitializer {
   }
 
   void FillZero(const TBlob& blob) const {
-    test::patternFill<DType>(&blob, []() -> DType { return DType(0); });
+    test::patternFill(&blob, []() -> DType { return DType(0); });
   }
 
  private:

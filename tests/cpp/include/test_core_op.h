@@ -132,9 +132,9 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
    * \param ctx Context to use when creating the array/tensor
    * \return The created NDArray
    */
-  NDArray CreateRandArray(const TShape& shape, const Context& ctx) const {
+  NDArray CreateRandArray(const TShape& shape, const Context& ctx, int dtype) const {
     CHECK_GT(shape.Size(), 0);  // Check it's a valid shape
-    NDArray array(shape, ctx, true, mshadow::DataType<DType>::kFlag);
+    NDArray array(shape, ctx, true, dtype);
     array.CheckAndAlloc();
     AccessAsCPU(array, ctx_.run_ctx, [this](const NDArray &arr) {
       test::op::OperatorDataInitializer<DType>::FillRandom(arr.data());
@@ -148,9 +148,9 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
    * \param ctx Context to use when creating the array/tensor
    * \return The created NDArray
    */
-  NDArray CreateZeroArray(const TShape& shape, const Context& ctx) const {
+  NDArray CreateZeroArray(const TShape& shape, const Context& ctx, int dtype) const {
     CHECK_GT(shape.Size(), 0);  // Check it's a valid shape
-    NDArray array(shape, ctx, true, mshadow::DataType<DType>::kFlag);
+    NDArray array(shape, ctx, true, dtype);
     array.CheckAndAlloc();
     AccessAsCPU(array, ctx_.run_ctx, [this](const NDArray &arr) {
       test::op::OperatorDataInitializer<DType>::FillZero(arr.data());
@@ -291,6 +291,11 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
     CHECK(!isGPU);
     ctx_.run_ctx.ctx.dev_type = Context::kCPU;
 #endif
+  }
+
+  static inline int default_dtype() {
+    using foo = typename mshadow::DataType<DType>;
+    return foo::kFlag;
   }
 
   static nnvm::NodePtr GetBackwardDependency(const nnvm::NodePtr& node,
@@ -439,10 +444,11 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       //CHECK_GE(inferred_num_outputs, num_visible_outputs);
       // Generic, all shapes the same. Probably this will need to be adjusted for more complex
       // operators such as dot
-      std::vector<TShape> input_shapes;
+      std::vector<nnvm::TShape> input_shapes;
       for (size_t i = 0, n = num_inputs; i < n; ++i) {
         input_shapes.emplace_back(i < input_shapes_.size() ? input_shapes_[i]
-                                                           : input_shapes_[input_shapes_.size() - 1]);
+                                                           : input_shapes_[input_shapes_.size()
+                                                                           - 1]);
       }
       std::vector<NDArray *> inputs_p, outputs_p;
 
@@ -455,10 +461,33 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       outputs_.reserve(inferred_num_outputs);
       outputs_p.reserve(inferred_num_outputs);
 
+      std::vector<int> input_types;
+      input_types.reserve(num_inputs);
+      std::vector<int> output_types;
+      output_types.reserve(inferred_num_outputs);
+
+      static auto& finfer_type = Op::GetAttr<nnvm::FInferType>("FInferType");
+      if (finfer_type.count(op_)) {
+        input_types.resize(num_inputs, -1);
+        input_types[0] = default_dtype();  // Set first input to default type
+        output_types.resize(inferred_num_outputs, -1);
+        finfer_type[op_](attrs_, &input_types, &output_types);
+        CHECK_EQ(input_types.size(), num_inputs);
+        CHECK_EQ(output_types.size(), inferred_num_outputs);
+      } else {
+        for(size_t x = 0; x < inferred_num_outputs; ++x) {
+          output_types.emplace_back(default_dtype());
+          input_types.emplace_back(default_dtype());
+        }
+      }
+
       for (size_t i = 0; i < static_cast<size_t>(num_inputs); ++i) {
         CHECK_LT(i, static_cast<int>(input_shapes.size()));
-        inputs_.emplace_back(i < inputs.size() ? inputs[i] : CreateRandArray(input_shapes[i],
-                                                                          ctx_.run_ctx.ctx));
+        inputs_.emplace_back(i < inputs.size()
+                             ? inputs[i]
+                             : CreateRandArray(input_shapes[i],
+                                               ctx_.run_ctx.ctx,
+                                               input_types[i]));
         inputs_p.emplace_back(&*inputs_.rbegin());
       }
 
@@ -476,13 +505,15 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
           output_shapes.resize(inferred_num_outputs);
         }
         CHECK_EQ(output_shapes.size(), inferred_num_outputs);
+
         for (size_t i = 0; i < static_cast<size_t>(inferred_num_outputs); ++i) {
           // If supplied and valid, pass from the supplied outputs vector
           // Otherwise use empty for forward pass, or zero-filled for backward pass
           outputs_.emplace_back(i < outputs.size() ? outputs[i]
                                                    : (backward_for_op
                                                       ? CreateZeroArray(output_shapes[i],
-                                                                        ctx_.run_ctx.ctx)
+                                                                        ctx_.run_ctx.ctx,
+                                                                        output_types[i])
                                                       : NDArray()));
           outputs_p.emplace_back(&*outputs_.rbegin());
         }
