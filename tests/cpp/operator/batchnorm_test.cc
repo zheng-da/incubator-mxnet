@@ -507,7 +507,7 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
                           BackwardOutputs::bwd_in_grad_Data));
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BackwardOutputs::bwd_in_grad_Gamma));
+                          BackwardOutputs::bwd_in_grad_Gamma, true));
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
                           BackwardOutputs::bwd_in_grad_Beta));
       // OutGrad
@@ -702,7 +702,6 @@ static test::op::OpInfoPair<OperatorProp1, OperatorProp2, OperatorExecutor> test
   const bool isGPU2,
   const TShape &inputShape,
   const test::op::kwargs_t& kwargs,
-  const bool dumpC,
   const size_t count = 1,
   const size_t cycleCount = CYCLE_COUNT) {
   test::op::OpInfo<OperatorProp1, OperatorExecutor> info_1 =
@@ -757,10 +756,6 @@ static test::op::OpInfoPair<OperatorProp1, OperatorProp2, OperatorExecutor> test
     BatchNormValidator<DType, AccReal>::compare(info_1, info_2);
   } while (++thisCount < cycleCount);
 
-//  if (dumpC) {
-//    info_1.executor_->dumpC(&std::cerr, "BN_testForwardAndBackward");
-//  }
-
   return  { info_1, info_2 };
 }
 template<typename OperatorProp1, typename OperatorProp2, typename OperatorExecutor>
@@ -768,7 +763,6 @@ static test::op::OpInfoPair<OperatorProp1, OperatorProp2, OperatorExecutor>
 testForwardAndBackward(const bool isGPU,
                        const TShape &inputShape,
                        const test::op::kwargs_t kwargs,
-                       const bool dumpC = false,
                        const size_t count = 1,
                        const size_t cycleCount = CYCLE_COUNT
 ) {
@@ -777,7 +771,6 @@ testForwardAndBackward(const bool isGPU,
     isGPU,
     inputShape,
     kwargs,
-    dumpC,
     count,
     cycleCount);
 }
@@ -810,31 +803,27 @@ template<typename OperatorExecutor>
 static test::op::OpInfoPair<BatchNormCoreOpProp, BatchNormCoreOpProp, OperatorExecutor>
 testBNForwardAndBackward2D(const bool isGPU,
                            const TShape &inputShape,
-                           const test::op::kwargs_t& kwargs,
-                           const bool dumpC = false) {
+                           const test::op::kwargs_t& kwargs) {
   CHECK_EQ(inputShape.ndim(), 4);  // V1 can only handle 2D
   return testForwardAndBackward<BatchNormCoreOpProp,
     BatchNormCoreOpProp, OperatorExecutor>(
     isGPU,
     isGPU,
     inputShape,
-    kwargs,
-    dumpC);
+    kwargs);
 }
 
 template<typename OperatorExecutor>
 static test::op::OpInfoPair<BatchNormCoreOpProp, BatchNormCoreOpProp, OperatorExecutor>
 testBNForwardAndBackward(const bool isGPU,
                          const TShape &inputShape,
-                         const test::op::kwargs_t& kwargs,
-                         const bool dumpC = false) {
+                         const test::op::kwargs_t& kwargs) {
   return testForwardAndBackward<BatchNormCoreOpProp,
     BatchNormCoreOpProp, OperatorExecutor>(
     isGPU,
     isGPU,
     inputShape,
-    kwargs,
-    dumpC);
+    kwargs);
 }
 
 /**
@@ -1075,7 +1064,7 @@ TEST(BATCH_NORM, TestIterAll) {
                       bi = testForwardAndBackward<BatchNormCoreOpProp,
                       BatchNormCoreOpProp,
                       BNOperatorExecutor<DType, AccReal>>(
-                      g1 != 0, g2 != 0, shape, kwargs, false);  // Keep it simple
+                      g1 != 0, g2 != 0, shape, kwargs);  // Keep it simple
                   });
               }
             }
@@ -1596,10 +1585,10 @@ TEST(BATCH_NORM, Test2DBackwardMixed_gpu_cpu) {
         const TShape inputShape({1, 1, 2, 1});
         testForwardAndBackward<BatchNormCoreOpProp, BatchNormCoreOpProp,
           BNOperatorExecutor<DType, AccReal>>(
-          false, true, inputShape, blank_kwargs, false);
+          false, true, inputShape, blank_kwargs);
         testForwardAndBackward<BatchNormCoreOpProp, BatchNormCoreOpProp,
           BNOperatorExecutor<DType, AccReal>>(
-          false, true, inputShape, blank_kwargs_nocudnn, false);
+          false, true, inputShape, blank_kwargs_nocudnn);
       });
   }
 }
@@ -1612,10 +1601,10 @@ TEST(BATCH_NORM, Test2DBackwardMixedComplex_gpu_cpu) {
         const TShape inputShape({BATCH_SIZE, CHANNELS, DH, DW});
         testForwardAndBackward<BatchNormCoreOpProp, BatchNormCoreOpProp,
           BNOperatorExecutor<DType, AccReal>>(
-          false, true, inputShape, blank_kwargs, false);
+          false, true, inputShape, blank_kwargs);
         testForwardAndBackward<BatchNormCoreOpProp, BatchNormCoreOpProp,
           BNOperatorExecutor<DType, AccReal>>(
-          false, true, inputShape, blank_kwargs_nocudnn, false);
+          false, true, inputShape, blank_kwargs_nocudnn);
       });
   }
 }
@@ -1630,10 +1619,10 @@ TEST(BATCH_NORM, Test2DBackwardMixed_gpu_cpu_nfg) {
         const TShape inputShape({1, 1, 2, 1});
         testForwardAndBackward<BatchNormCoreOpProp, BatchNormCoreOpProp,
           BNOperatorExecutor<DType, AccReal>>(
-          false, true, inputShape, nonfixgamma_kwargs, false);
+          false, true, inputShape, nonfixgamma_kwargs);
         testForwardAndBackward<BatchNormCoreOpProp, BatchNormCoreOpProp,
           BNOperatorExecutor<DType, AccReal>>(
-          false, true, inputShape, nonfixgamma_kwargs_nocudnn, false);
+          false, true, inputShape, nonfixgamma_kwargs_nocudnn);
       });
   }
 }
@@ -1646,10 +1635,10 @@ TEST(BATCH_NORM, Test2DBackwardMixedComplex_gpu_cpu_nfg) {
         const TShape inputShape({BATCH_SIZE, CHANNELS, DH, DW});
         testForwardAndBackward<BatchNormCoreOpProp, BatchNormCoreOpProp,
           BNOperatorExecutor<DType, AccReal>>(
-          false, true, inputShape, nonfixgamma_kwargs, false);
+          false, true, inputShape, nonfixgamma_kwargs);
         testForwardAndBackward<BatchNormCoreOpProp, BatchNormCoreOpProp,
           BNOperatorExecutor<DType, AccReal>>(
-          false, true, inputShape, nonfixgamma_kwargs_nocudnn, false);
+          false, true, inputShape, nonfixgamma_kwargs_nocudnn);
       });
   }
 }
@@ -1664,10 +1653,10 @@ TEST(BATCH_NORM, Test2DBackwardMixed_gpu_cpu_ugs) {
         const TShape inputShape({2, 3, 2, 2});
         testForwardAndBackward<BatchNormCoreOpProp, BatchNormCoreOpProp,
           BNOperatorExecutor<DType, AccReal>>(
-          false, true, inputShape, useglobalstats_kwargs_nocudnn, false);
+          false, true, inputShape, useglobalstats_kwargs_nocudnn);
         testForwardAndBackward<BatchNormCoreOpProp, BatchNormCoreOpProp,
           BNOperatorExecutor<DType, AccReal>>(
-          false, true, inputShape, useglobalstats_kwargs, false);
+          false, true, inputShape, useglobalstats_kwargs);
       });
   }
 }
@@ -1680,10 +1669,10 @@ TEST(BATCH_NORM, Test2DBackwardMixedComplex_gpu_cpu_ugs) {
         const TShape inputShape({BATCH_SIZE, CHANNELS, DH, DW});
         testForwardAndBackward<BatchNormCoreOpProp, BatchNormCoreOpProp,
           BNOperatorExecutor<DType, AccReal>>(
-          false, true, inputShape, useglobalstats_kwargs, false);
+          false, true, inputShape, useglobalstats_kwargs);
         testForwardAndBackward<BatchNormCoreOpProp, BatchNormCoreOpProp,
           BNOperatorExecutor<DType, AccReal>>(
-          false, true, inputShape, useglobalstats_kwargs_nocudnn, false);
+          false, true, inputShape, useglobalstats_kwargs_nocudnn);
       });
   }
 }
