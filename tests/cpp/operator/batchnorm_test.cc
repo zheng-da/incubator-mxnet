@@ -45,11 +45,11 @@ static constexpr int DEPTH = 2;
 static constexpr int DH = 2;
 static constexpr int DW = 3;
 #else
-static constexpr int BATCH_SIZE = 10;
-static constexpr int CHANNELS = 3;
+static constexpr int BATCH_SIZE = 1;
+static constexpr int CHANNELS = 1;
 static constexpr int DEPTH = 1;
-static constexpr int DH = 10;
-static constexpr int DW = 10;
+static constexpr int DH = 3;
+static constexpr int DW = 2;
 #endif
 
 static constexpr int TIMING_BATCH_SIZE = 128;
@@ -155,20 +155,23 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
 
   void resetForward() override {
     Super::resetForward();
-    // Start by filling all inputs and outputs with an arbitrary value
+
+    // Start by filling all inputs and outputs with an arbitrary values
     for (size_t i = 0, n = Super::inputs().size(); i < n; ++i) {
-      const TBlob& out = Blob(&Super::inputs()[i]);
-      const int dtype = out.type_flag_;
-      MSHADOW_TYPE_SWITCH(dtype, DTypeX, { test::fill(out, DTypeX(0.1234)); });
+      test::fill(Super::inputs()[i].data(), 0.1234);
     }
     for (size_t i = 0, n = Super::outputs().size(); i < n; ++i) {
-      const TBlob& out = Blob(&Super::outputs()[i]);
-      const int dtype = out.type_flag_;
-      MSHADOW_TYPE_SWITCH(dtype, DTypeX, { test::fill(out, DTypeX(0.1234)); });
+      test::fill(Super::outputs()[i].data(), 0.5678);
+    }
+    for (size_t i = 0, n = Super::bwd_inputs().size(); i < n; ++i) {
+      test::fill(Super::bwd_inputs()[i].data(), 0.9012);
+    }
+    for (size_t i = 0, n = Super::outputs().size(); i < n; ++i) {
+      test::fill(Super::bwd_outputs()[i].data(), 0.3456);
     }
     // Init input data
     double val = 0;
-    test::patternFill(&GetBlob(kForInData), [&val]() -> double { return val += 0.1; });
+    test::patternFill(&GetBlob(kForInData), [&val]() -> double { return val += 1; });
 
     MSHADOW_TYPE_SWITCH(
       Blob(GetForwardInArray(kForGamma)).type_flag_,
@@ -223,41 +226,20 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     // Join aux arrays
     *GetArray(bwd_aux_states_MovingMean) = *GetArray(kForMovingMean);
     *GetArray(bwd_aux_states_MovingVar) = *GetArray(kForMovingVar);
-    //*GetArray(bwd_in_data_Gamma) = *GetArray(kForGamma);
-    //*GetArray(bwd_in_data_Beta) = *GetArray(kForBeta);
-    //*GetArray(bwd_out_data_Gamma) = *GetArray(kForOutMean);
-    //*GetArray(bwd_out_data_Beta) = *GetArray(kForOutVar);
-    //*GetArray(bwd_out_data_Data) = *GetArray(kForOutData);
-
-    //*GetArray(bwd_in_grad_Gamma) = *GetArray(kForGamma);
-    //*GetArray(bwd_in_grad_Beta) = *GetArray(kForBeta);
-
-
-    // Start by filling all backward inputs and outputs with an arbitrary value
-//    for (size_t i = 0, n = Super::bwd_inputs().size(); i < n; ++i) {
-//      const TBlob& out = Blob(&Super::bwd_inputs()[i]);
-//      const int dtype = out.type_flag_;
-//      MSHADOW_TYPE_SWITCH(dtype, DTypeX, { test::fill(out, DTypeX(0.5678)); });
-//    }
-//    for (size_t i = 0, n = Super::bwd_outputs().size(); i < n; ++i) {
-//      const TBlob& out = Blob(&Super::bwd_outputs()[i]);
-//      const int dtype = out.type_flag_;
-//      MSHADOW_TYPE_SWITCH(dtype, DTypeX, { test::fill(out, DTypeX(0.5678)); });
-//    }
 
     double val = -.101;
     test::patternFill(&GetBlob(bwd_out_data_Data), [&val]() -> double { return val += 1; });
-    test::try_fill(&GetBlob(bwd_out_data_Gamma), 0.94);
-    test::try_fill(&GetBlob(bwd_out_data_Beta), 0.62);
+    test::try_fill(&GetBlob(bwd_out_data_Gamma), 1.0);
+    test::try_fill(&GetBlob(bwd_out_data_Beta), 0.0);
 
     val = -.001;
     test::patternFill(&GetBlob(bwd_out_grad_Grad), [&val]() -> double { return val += 1; });
     test::try_fill(&GetBlob(bwd_out_grad_Mean), 0.1);
     test::try_fill(&GetBlob(bwd_out_grad_Var), 0.15);
 
-    test::try_fill(&GetBlob(bwd_in_grad_Gamma), 0.15);
-    test::try_fill(&GetBlob(bwd_in_grad_Beta), 0.1);
     test::try_fill(&GetBlob(bwd_in_grad_Data), 0);
+    test::try_fill(&GetBlob(bwd_in_grad_Gamma), 1.0);
+    test::try_fill(&GetBlob(bwd_in_grad_Beta), 0.0);
 
     //test::print(RunContext(), &std::cout, GetArray(bwd_in_data_Data)->data());
   }
@@ -361,6 +343,7 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
         }
       }
 
+      CHECK_GT(itemCount, 1U); // Not a valid check for one item
       CHECK_NE(nonZero, 0);
 
       const AccReal saveSum = sum, saveVar = var;
@@ -377,6 +360,7 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
           LOG(WARNING) << "Sum is not close enough to zero: "
                        << saveSum << " (" << sum << "), "
                        << saveVar << " (" << var << ")";
+          test::print(RunContext(), &(std::cerr << "Mean problem:" << std::endl), *blob);
         }
         // expect unit variance
         EXPECT_NEAR(1, var, kErrorBound);
@@ -384,6 +368,7 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
           LOG(WARNING) << "Variance is not close enough to 1: "
                        << saveSum << " (" << sum << "), "
                        << saveVar << " (" << var << ")";
+          test::print(RunContext(), &(std::cerr << "Variance problem:" << std::endl), *blob);
         }
       }
     }
@@ -454,7 +439,12 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
       test::print(RunContext(), &(std::cout << "Blob 1:"), b1, true, true);
       test::print(RunContext(), &(std::cout << "Blob 2:"), b2, true, true);
     }
-    return test::op::Validator<DType, AccReal>::compare(b1, b2);
+    const bool rc = test::op::Validator<DType, AccReal>::compare(b1, b2);
+    if(!rc) {
+      test::print(RunContext(), &(std::cerr << "ERROR Blob 1:"), b1, true, true);
+      test::print(RunContext(), &(std::cerr << "ERROR Blob 2:"), b2, true, true);
+    }
+    return rc;
   }
 
   /*! \brief Check batch norm output */
@@ -511,12 +501,12 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
                           BackwardInputs::bwd_out_data_Beta));
       // InGrad
       ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BackwardOutputs::bwd_in_grad_Data));
-      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BackwardOutputs::bwd_in_grad_Gamma, true));
-      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BackwardOutputs::bwd_in_grad_Beta));
-      // OutGrad
+                          BackwardOutputs::bwd_in_grad_Data, true));
+//      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
+//                          BackwardOutputs::bwd_in_grad_Gamma, true));
+//      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
+//                          BackwardOutputs::bwd_in_grad_Beta));
+//      // OutGrad
       ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
                           BackwardInputs::bwd_out_grad_Grad));
     }
@@ -867,8 +857,8 @@ TEST(BATCH_NORM, Test1DForward) {
 }
 
 TEST(BATCH_NORM, Test2DForward) {
-  for (int type :  v2_types) {
-  //for (const mshadow::TypeFlag type :  { mshadow::kFloat16 }) {
+  //for (int type :  v2_types) {
+  for (const mshadow::TypeFlag type :  { mshadow::kFloat32 }) {
     MSHADOW_REAL_TYPE_SWITCH_EX(type, DType, AccReal, {
       testBNForwardAndBackward<BNOperatorExecutor<DType, AccReal>>(
         false, {BATCH_SIZE, CHANNELS, DH, DW}, blank_kwargs);
@@ -884,8 +874,6 @@ TEST(BATCH_NORM, Test3DForward) {
     });
   }
 }
-
-#if 0
 
 template<typename PropType, typename OperatorExecutor>
 static void timingTest(const std::string& label,
@@ -986,6 +974,8 @@ TEST(BATCH_NORM, TestStochasticTiming_2D) {
   }
 #endif
 }
+
+#if 0
 
 /*! \brief Performance tests */
 #ifndef _WIN32

@@ -404,9 +404,10 @@ inline StreamType& print_blob_(const RunContext& ctx,
     if (add_endl) {
       os << std::endl;
     }
-  }
-  if (!add_endl) {
+  } else if (!add_endl) {
     os << " ";
+  } else {
+    os << std::endl;
   }
   os << std::flush;
   return os;

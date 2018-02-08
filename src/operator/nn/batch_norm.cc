@@ -27,6 +27,8 @@
 #include "batch_norm-inl.h"
 #include <nnvm/op_attr_types.h>
 #include "../elemwise_op_common.h"
+#include "../../tests/cpp/include/test_util.h"
+
 #if MXNET_USE_MKLDNN == 1
 #include "./mkldnn/mkldnn_batch_norm-inl.h"
 #endif
@@ -94,6 +96,11 @@ void BatchNormForwardImpl(mshadow::Stream<cpu> *,
                           const std::vector<OpReqType> &req,
                           const std::vector<TBlob> &out_data,
                           const std::vector<TBlob> &aux_states) {
+
+//  test::print(RunContext(), &std::cout, in_data[batchnorm::kData], true);
+//  test::print(RunContext(), &std::cout, in_data[batchnorm::kGamma], true);
+//  test::print(RunContext(), &std::cout, in_data[batchnorm::kBeta], true);
+
   // Input
   batchnorm::BNTensor3<DType> inputData(in_data[batchnorm::kData], param_.axis);
   const TBlob &weights         = in_data[batchnorm::kGamma];
@@ -184,6 +191,7 @@ void BatchNormForwardImpl(mshadow::Stream<cpu> *,
                     });
       }
     }
+    //test::print(RunContext(), &std::cout, out_data[batchnorm::kOut], true);
   }
 }
 

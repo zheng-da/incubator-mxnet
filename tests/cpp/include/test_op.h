@@ -255,7 +255,7 @@ class Validator {
       const DTypeX v2 = *valuePtr++;
       EXPECT_NEAR(v1, v2, kErrorBound);
       if (!isNear(v1, v2, kErrorBound) && !warningCount++) {
-        LOG(WARNING) << "Near test failure: " << i << ", " << n << std::endl << std::flush;
+        on_failure(i, n, v1, v2, kErrorBound);
       }
     }
     return true;
