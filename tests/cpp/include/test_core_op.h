@@ -531,10 +531,27 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
           nnvm::FInferShape call_infer_shapes = finfer_shape[op_];
           output_shapes.resize(inferred_num_outputs);
           call_infer_shapes(attrs_, &input_shapes, &output_shapes);
+          input_shapes_ = input_shapes;
         } else {
-          // TODO: this should be only if outputs param is empty
-          output_shapes = input_shapes;
-          output_shapes.resize(inferred_num_outputs);
+          if (backward_for_op) {
+            // BWD Input shapes
+            CHECK_EQ(bwd_node_ptr->inputs.size(), num_inputs);
+            input_shapes.resize(bwd_node_ptr->inputs.size());
+            for (size_t i = 0; i < num_inputs; ++i) {
+              const int map_key = bwd_node_ptr->inputs[i].index;
+              CHECK(index2array.find(map_key) != index2array.end());
+              const TShape& shape = index2array[map_key]->shape();
+              input_shapes[i] = shape;
+              std::cout << "Bwd input shape " << i << ": " << shape << std::endl << std::flush;
+            }
+
+            // BWD Output shapes
+            output_shapes = backward_for_op->input_shapes_;
+            CHECK_EQ(output_shapes.size(), inferred_num_outputs);
+          } else {
+            output_shapes = input_shapes;
+            output_shapes.resize(inferred_num_outputs);
+          }
         }
         CHECK_EQ(output_shapes.size(), inferred_num_outputs);
 

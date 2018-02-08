@@ -34,7 +34,7 @@
 
 using namespace mxnet;
 
-#define SIMPLE_DIMENSIONS  1
+#define SIMPLE_DIMENSIONS  0
 #define MXNET_DUMP_C  0
 #define DISABLE_VALIDATION 0  // If performance profiling, may do things
 // that cause validation to fail
@@ -85,10 +85,12 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
   enum ForwardInputs { kForInData, kForGamma, kForBeta, kForInMovingMean, kForInMovingVar };
   enum ForwardOutputs { kForOutData, kForOutMean, kForOutVar };
   enum BackwardOutputs { kBackOutData, kBackOutGamma, kBackOutBeta, kBackOutMovingMean, kBackOutMovingVar };
-  enum BackwardInputs { kBackOutGrad, kBackOutGradMean, kBackOutGradVar, kBackData,
-    kBackGamma, kBackBeta, kBackInMovingMean, kBackInMovingVar, kBackInData, kBackInMean,
-    kBackInVar };
-
+  enum BackwardInputs {
+    /* out_grad */ kBackOutGrad, kBackOutGradMean, kBackOutGradVar,
+    /* in_data */  kBackData, kBackGamma, kBackBeta,
+    /* aux_states */  kBackInMovingMean, kBackInMovingVar,
+    /* in_grad */ kBackInData, kBackInMean, kBackInVar
+  };
 
   const NDArray *GetForwardInArray(const ForwardInputs idx) const {
     const std::vector<NDArray> &arrs = Super::inputs();
@@ -203,14 +205,15 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     // Join aux arrays
     *GetArray(kBackInMovingMean) = *GetArray(kForInMovingMean);
     *GetArray(kBackInMovingVar) = *GetArray(kForInMovingVar);
-    *GetArray(kBackGamma) = *GetArray(kForGamma);
-    *GetArray(kBackBeta) = *GetArray(kForBeta);
+    //*GetArray(kBackGamma) = *GetArray(kForGamma);
+    //*GetArray(kBackBeta) = *GetArray(kForBeta);
     *GetArray(kBackInMean) = *GetArray(kForOutMean);
     *GetArray(kBackInVar) = *GetArray(kForOutVar);
-    *GetArray(kBackInData) = *GetArray(kForOutData);
+    //*GetArray(kBackInData) = *GetArray(kForOutData);
 
     *GetArray(kBackOutGamma) = *GetArray(kForGamma);
     *GetArray(kBackOutBeta) = *GetArray(kForBeta);
+
 
     // Start by filling all backward inputs and outputs with an arbitrary value
 //    for (size_t i = 0, n = Super::bwd_inputs().size(); i < n; ++i) {
@@ -797,6 +800,21 @@ testBNForwardAndBackward2D(const bool isGPU,
     dumpC);
 }
 
+template<typename OperatorExecutor>
+static test::op::OpInfoPair<BatchNormCoreOpProp, BatchNormCoreOpProp, OperatorExecutor>
+testBNForwardAndBackward(const bool isGPU,
+                         const TShape &inputShape,
+                         const test::op::kwargs_t& kwargs,
+                         const bool dumpC = false) {
+  return testForwardAndBackward<BatchNormCoreOpProp,
+    BatchNormCoreOpProp, OperatorExecutor>(
+    isGPU,
+    isGPU,
+    inputShape,
+    kwargs,
+    dumpC);
+}
+
 /**
  *   _____             _  _
  *  / ____|           (_)| |
@@ -808,15 +826,10 @@ testBNForwardAndBackward2D(const bool isGPU,
  *                            |___/
  */
 TEST(BATCH_NORM, TestSanityForwaredAndBackward) {
-  MSHADOW_REAL_TYPE_SWITCH_EX(
-    //mshadow::kFloat32,
-    mshadow::kFloat16,
-    DType,
-    AccReal,
-    {
-      auto infoA = testBNForwardAndBackward2D<BNOperatorExecutor<DType, AccReal>>(
-        false, {BATCH_SIZE, CHANNELS, DH, DW}, blank_kwargs);
-    });
+  MSHADOW_REAL_TYPE_SWITCH_EX(mshadow::kFloat32, DType, AccReal, {
+    testBNForwardAndBackward2D<BNOperatorExecutor<DType, AccReal>>(
+      false, {BATCH_SIZE, CHANNELS, DH, DW}, blank_kwargs);
+  });
 }
 
 /**
@@ -835,42 +848,28 @@ static const std::vector<int> v2_types = {mshadow::kFloat32,
 
 TEST(BATCH_NORM, Test1DForward) {
   for (int type :  v2_types) {
-    MSHADOW_REAL_TYPE_SWITCH_EX(
-      type, DType, AccReal,
-      {
-        TestBatchNormOperatorForward<BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>>(
-          false, {BATCH_SIZE, CHANNELS, DW}, blank_kwargs);
-      });
+    MSHADOW_REAL_TYPE_SWITCH_EX(type, DType, AccReal, {
+      testBNForwardAndBackward<BNOperatorExecutor<DType, AccReal>>(
+        false, {BATCH_SIZE, CHANNELS, DW}, blank_kwargs);
+    });
   }
-}
-
-TEST(BATCH_NORM, Test2DForwardV1) {
-  TestBatchNormOperatorForward<BatchNormCoreOpProp, BNOperatorExecutor<float, float>>(
-    false,
-    {BATCH_SIZE, CHANNELS, DH, DW},
-    blank_kwargs);
 }
 
 TEST(BATCH_NORM, Test2DForward) {
   for (int type :  v2_types) {
-    MSHADOW_REAL_TYPE_SWITCH_EX(
-      type, DType, AccReal,
-      {
-        auto opInfoFloatH = TestBatchNormOperatorForward<BatchNormCoreOpProp,
-          BNOperatorExecutor<DType, AccReal>>(
-          false, {BATCH_SIZE, CHANNELS, DH, DW}, blank_kwargs);
-      });
+    MSHADOW_REAL_TYPE_SWITCH_EX(type, DType, AccReal, {
+      testBNForwardAndBackward<BNOperatorExecutor<DType, AccReal>>(
+        false, {BATCH_SIZE, CHANNELS, DH, DW}, blank_kwargs);
+    });
   }
 }
 
 TEST(BATCH_NORM, Test3DForward) {
   for (int type :  v2_types) {
-    MSHADOW_REAL_TYPE_SWITCH_EX(
-      type, DType, AccReal,
-      {
-        TestBatchNormOperatorForward<BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>>(
-          false, {BATCH_SIZE, CHANNELS, DEPTH, DH, DW}, blank_kwargs);
-      });
+    MSHADOW_REAL_TYPE_SWITCH_EX(type, DType, AccReal, {
+      testBNForwardAndBackward<BNOperatorExecutor<DType, AccReal>>(
+        false, {BATCH_SIZE, CHANNELS, DEPTH, DH, DW}, blank_kwargs);
+    });
   }
 }
 
