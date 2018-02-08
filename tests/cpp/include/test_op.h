@@ -223,8 +223,8 @@ class Validator {
   /*! \brief Compare blob data */
   static bool compare(const TBlob& b1, const TBlob& b2) {
     if (b1.shape_ == b2.shape_) {
+      CHECK_EQ(b1.type_flag_, b2.type_flag_) << "Can't compare blobs of different data types";
       MSHADOW_REAL_TYPE_SWITCH(b1.type_flag_, DTypeX, {
-        CHECK_EQ(b1.type_flag_, b2.type_flag_) << "Can't compare blobs of different data types";
         const DTypeX *d1 = b1.dptr<DTypeX>();
         const DTypeX *d2 = b2.dptr<DTypeX>();
         CHECK_NE(d1, d2);  // don't compare the same memory

@@ -257,7 +257,8 @@ void BatchNormCompute(const nnvm::NodeAttrs& attrs,
 
 template<typename xpu>
 void BatchNormGradCompute(const nnvm::NodeAttrs& attrs,
-                          const OpContext& ctx, const std::vector<TBlob>& inputs,
+                          const OpContext& ctx,
+                          const std::vector<TBlob>& inputs,
                           const std::vector<OpReqType>& req,
                           const std::vector<TBlob>& outputs) {
   CHECK_EQ(inputs.size(), 11U);

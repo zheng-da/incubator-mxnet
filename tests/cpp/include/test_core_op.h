@@ -119,6 +119,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
    */
   static inline std::vector<TBlob>& CollectBlobs(const std::vector<NDArray>& src,
                                                  std::vector<TBlob> *dest) {
+    dest->resize(0);
     dest->reserve(dest->size() + src.size());
     for (size_t i = 0, n = src.size(); i < n; ++i) {
       dest->emplace_back(src[i].data());
@@ -448,10 +449,12 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       // Generic, all shapes the same. Probably this will need to be adjusted for more complex
       // operators such as dot
       std::vector<nnvm::TShape> input_shapes;
-      for (size_t i = 0, n = num_inputs; i < n; ++i) {
-        input_shapes.emplace_back(i < input_shapes_.size() ? input_shapes_[i]
-                                                           : input_shapes_[input_shapes_.size()
-                                                                           - 1]);
+      if(!input_shapes_.empty()) {
+        for (size_t i = 0, n = num_inputs; i < n; ++i) {
+          input_shapes.emplace_back(i < input_shapes_.size() ? input_shapes_[i]
+                                                             : input_shapes_[input_shapes_.size()
+                                                                             - 1]);
+        }
       }
       std::vector<NDArray *> inputs_p, outputs_p;
 
@@ -487,7 +490,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
               CHECK(index2array.find(map_key) != index2array.end());
               const int dtype = index2array[map_key]->dtype();
               input_types[i] = dtype;
-              std::cout << "Bwd input type " << i << ": " << dtype << std::endl << std::flush;
+              //std::cout << "Bwd input type " << i << ": " << dtype << std::endl << std::flush;
             }
             for (const auto &fwd_inp : backward_for_op->inputs()) {
               const int dtype = fwd_inp.data().type_flag_;
@@ -513,16 +516,6 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
         }
       }
 
-      for (size_t i = 0; i < static_cast<size_t>(num_inputs); ++i) {
-        CHECK_LT(i, static_cast<int>(input_shapes.size()));
-        inputs_.emplace_back(i < inputs.size()
-                             ? inputs[i]
-                             : CreateRandArray(input_shapes[i],
-                                               ctx_.run_ctx.ctx,
-                                               input_types[i]));
-        inputs_p.emplace_back(&*inputs_.rbegin());
-      }
-
       // Output arrays
       if (outputs_.empty()) {
         std::vector<nnvm::TShape> output_shapes;
@@ -535,16 +528,18 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
         } else {
           if (backward_for_op) {
             // BWD Input shapes
+            input_shapes.clear();
             CHECK_EQ(bwd_node_ptr->inputs.size(), num_inputs);
-            input_shapes.resize(bwd_node_ptr->inputs.size());
             for (size_t i = 0; i < num_inputs; ++i) {
               const int map_key = bwd_node_ptr->inputs[i].index;
               CHECK(index2array.find(map_key) != index2array.end());
-              const TShape& shape = index2array[map_key]->shape();
-              input_shapes[i] = shape;
-              std::cout << "Bwd input shape " << i << ": " << shape << std::endl << std::flush;
+              const nnvm::TShape& shp = index2array[map_key]->shape();
+              input_shapes.push_back(shp);
+              const nnvm::TShape ss = input_shapes[i];
+//              std::cout << "Bwd input shape " << i << ": " << shp
+//                        << " ( " << input_shapes[i] << " )" << std::endl << std::flush;
             }
-
+            input_shapes_ = input_shapes;
             // BWD Output shapes
             output_shapes = backward_for_op->input_shapes_;
             CHECK_EQ(output_shapes.size(), inferred_num_outputs);
@@ -554,6 +549,8 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
           }
         }
         CHECK_EQ(output_shapes.size(), inferred_num_outputs);
+
+        //for (auto sh : input_shapes) { std::cout << sh << std::endl << std::flush; }
 
         for (size_t i = 0; i < static_cast<size_t>(inferred_num_outputs); ++i) {
           // If supplied and valid, pass from the supplied outputs vector
@@ -566,6 +563,15 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
                                                       : NDArray()));
           outputs_p.emplace_back(&*outputs_.rbegin());
         }
+      }
+
+      for (size_t i = 0; i < static_cast<size_t>(num_inputs); ++i) {
+        CHECK_LT(i, static_cast<int>(input_shapes.size()));
+        inputs_.emplace_back(i < inputs.size()
+                             ? inputs[i] : CreateRandArray(input_shapes[i],
+                                                           ctx_.run_ctx.ctx,
+                                                           input_types[i]));
+        inputs_p.emplace_back(&*inputs_.rbegin());
       }
 
       if (!backward_for_op) {

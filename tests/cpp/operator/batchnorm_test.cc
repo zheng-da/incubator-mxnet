@@ -82,14 +82,29 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     param_.Init(kwargs);
   }
 
-  enum ForwardInputs { kForInData, kForGamma, kForBeta, kForInMovingMean, kForInMovingVar };
-  enum ForwardOutputs { kForOutData, kForOutMean, kForOutVar };
-  enum BackwardOutputs { kBackOutData, kBackOutGamma, kBackOutBeta, kBackOutMovingMean, kBackOutMovingVar };
+  /*!
+   * \brief Forward
+   */
+  enum ForwardInputs {
+    /* in_data */    kForInData, kForGamma, kForBeta,
+    /* aux_states */ kForMovingMean, kForMovingVar
+  };
+  enum ForwardOutputs {
+    /* outputs */     kForOutData, kForOutMean, kForOutVar
+  };
+
+  /*!
+   * \brief Backward
+   */
   enum BackwardInputs {
-    /* out_grad */ bwd_out_grad_Grad, bwd_out_grad_Mean, bwd_out_grad_Var,
-    /* in_data */  bwd_in_data_Data, bwd_in_data_Gamma, bwd_in_data_Beta,
+    /* out_grad */    bwd_out_grad_Grad, bwd_out_grad_Mean, bwd_out_grad_Var,
+    /* in_data */     bwd_in_data_Data, bwd_in_data_Gamma, bwd_in_data_Beta,
     /* aux_states */  bwd_aux_states_MovingMean, bwd_aux_states_MovingVar,
-    /* in_grad */ bwd_in_grad_Data, bwd_in_grad_Gamma, bwd_in_grad_Beta
+    /* in_grad */     bwd_out_data_Data, bwd_out_data_Gamma, bwd_out_data_Beta
+  };
+  enum BackwardOutputs {
+    /* in_grad */     bwd_in_grad_Data /* Original input data */,
+                      bwd_in_grad_Gamma, bwd_in_grad_Beta
   };
 
   const NDArray *GetForwardInArray(const ForwardInputs idx) const {
@@ -104,14 +119,14 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     return &arrs[idx];
   }
 
-  const NDArray *GetBackwardOutArray(const BackwardOutputs idx) const {
-    const std::vector<NDArray> &arrs = Super::bwd_outputs();
+  const NDArray *GetBackwardInArray(const BackwardInputs idx) {
+    const std::vector<NDArray> &arrs = Super::bwd_inputs();
     CHECK_LT(idx, arrs.size());
     return &arrs[idx];
   }
 
-  const NDArray *GetBackwardInArray(const BackwardInputs idx) {
-    const std::vector<NDArray> &arrs = Super::bwd_inputs();
+  const NDArray *GetBackwardOutArray(const BackwardOutputs idx) const {
+    const std::vector<NDArray> &arrs = Super::bwd_outputs();
     CHECK_LT(idx, arrs.size());
     return &arrs[idx];
   }
@@ -188,31 +203,38 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
 
     // Init the moving data (all mean = 0, all var = 1)
     MSHADOW_TYPE_SWITCH(
-      Blob(GetForwardInArray(kForInMovingMean)).type_flag_,
+      Blob(GetForwardInArray(kForMovingMean)).type_flag_,
       DTypeX, {
-        test::fill(Blob(GetForwardInArray(kForInMovingMean)), DTypeX(0));
+        test::fill(Blob(GetForwardInArray(kForMovingMean)), DTypeX(0));
       });
     MSHADOW_TYPE_SWITCH(
-      Blob(GetForwardInArray(kForInMovingVar)).type_flag_,
+      Blob(GetForwardInArray(kForMovingVar)).type_flag_,
       DTypeX, {
-        test::fill(Blob(GetForwardInArray(kForInMovingVar)), DTypeX(1));
+        test::fill(Blob(GetForwardInArray(kForMovingVar)), DTypeX(1));
       });
   }
 
   void resetBackward() override {
     Super::resetBackward();
 
+    // Join forward input and in_data array
+    *GetArray(bwd_in_data_Data)  = *GetArray(kForInData);
+    *GetArray(bwd_in_data_Gamma) = *GetArray(kForGamma);
+    *GetArray(bwd_in_data_Beta)  = *GetArray(kForBeta);
+
+    //test::print(RunContext(), &std::cout, GetArray(bwd_in_data_Data)->data());
+
     // Join aux arrays
-    *GetArray(bwd_aux_states_MovingMean) = *GetArray(kForInMovingMean);
-    *GetArray(bwd_aux_states_MovingVar) = *GetArray(kForInMovingVar);
+    *GetArray(bwd_aux_states_MovingMean) = *GetArray(kForMovingMean);
+    *GetArray(bwd_aux_states_MovingVar) = *GetArray(kForMovingVar);
     //*GetArray(bwd_in_data_Gamma) = *GetArray(kForGamma);
     //*GetArray(bwd_in_data_Beta) = *GetArray(kForBeta);
-    *GetArray(bwd_in_grad_Gamma) = *GetArray(kForOutMean);
-    *GetArray(bwd_in_grad_Beta) = *GetArray(kForOutVar);
-    //*GetArray(bwd_in_grad_Data) = *GetArray(kForOutData);
+    //*GetArray(bwd_out_data_Gamma) = *GetArray(kForOutMean);
+    //*GetArray(bwd_out_data_Beta) = *GetArray(kForOutVar);
+    //*GetArray(bwd_out_data_Data) = *GetArray(kForOutData);
 
-    //*GetArray(kBackOutGamma) = *GetArray(kForGamma);
-    //*GetArray(kBackOutBeta) = *GetArray(kForBeta);
+    //*GetArray(bwd_in_grad_Gamma) = *GetArray(kForGamma);
+    //*GetArray(bwd_in_grad_Beta) = *GetArray(kForBeta);
 
 
     // Start by filling all backward inputs and outputs with an arbitrary value
@@ -228,10 +250,15 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
 //    }
 
     DType val = -.001;
+    test::try_fill(&GetBlob(bwd_out_grad_Mean), 0.1);
+    test::try_fill(&GetBlob(bwd_out_grad_Var), 0.15);
     test::patternFill(&GetBlob(bwd_out_grad_Grad), [&val]{ return val += 1; });
-    test::try_fill(&GetBlob(bwd_in_data_Gamma), 0.1);
-    test::try_fill(&GetBlob(bwd_in_data_Beta), 0.1);
-    test::try_fill(&GetBlob(kBackOutData), 0);
+
+    test::try_fill(&GetBlob(bwd_in_grad_Gamma), 0.15);
+    test::try_fill(&GetBlob(bwd_in_grad_Beta), 0.1);
+    test::try_fill(&GetBlob(bwd_in_grad_Data), 0);
+
+    //test::print(RunContext(), &std::cout, GetArray(bwd_in_data_Data)->data());
   }
 
   const bool hasWeightAndBias_;  // This will cause forward pass validation to fail
@@ -453,44 +480,39 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
   static void compare(
     const test::op::OpInfo<PropType1, BNOperatorExecutor<DType, AccReal>>& info_1,
     const test::op::OpInfo<PropType2, BNOperatorExecutor<DType, AccReal>>& info_2) {
+    using ForwardInputs = typename BNOperatorExecutor<DType, AccReal>::ForwardInputs;
+    using ForwardOutputs = typename BNOperatorExecutor<DType, AccReal>::ForwardOutputs;
+    using BackwardInputs = typename BNOperatorExecutor<DType, AccReal>::BackwardInputs;
+    using BackwardOutputs = typename BNOperatorExecutor<DType, AccReal>::BackwardOutputs;
     // Input
-    EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                        BNOperatorExecutor<DType, AccReal>::kForInData));
-    EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                        BNOperatorExecutor<DType, AccReal>::kForGamma));
-    EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                        BNOperatorExecutor<DType, AccReal>::kForBeta));
+    EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardInputs::kForInData));
+    EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardInputs::kForGamma));
+    EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardInputs::kForBeta));
     // Output
-    EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                        BNOperatorExecutor<DType, AccReal>::kForOutData));
-    CHECK_EQ(info_2.prop_->getParam().use_global_stats,
-             info_1.prop_->getParam().use_global_stats);
+    EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::kForOutData));
+    CHECK_EQ(info_2.prop_->getParam().use_global_stats, info_1.prop_->getParam().use_global_stats);
 
 #if MXNET_USE_CUDNN != 1 /* CUDNN takes a different approach here on first pass */
     // Aux
-    EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::kBackwardOut,
-                          BNOperatorExecutor<DType, AccReal>::kForInMovingMean));
-    EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::kBackwardOut,
-                          BNOperatorExecutor<DType, AccReal>::kForInMovingVar));
+    EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::::kForMovingMean));
+    EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::kForMovingVar));
 #endif
 
     if (!info_2.prop_->getParam().use_global_stats) {
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::bwd_in_grad_Gamma));
+                          BackwardInputs::bwd_out_data_Gamma));
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::bwd_in_grad_Beta));
+                          BackwardInputs::bwd_out_data_Beta));
       // InGrad
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::kForInData));
+                          BackwardOutputs::bwd_in_grad_Data));
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::bwd_in_data_Gamma));
+                          BackwardOutputs::bwd_in_grad_Gamma));
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::bwd_in_data_Beta));
+                          BackwardOutputs::bwd_in_grad_Beta));
       // OutGrad
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::bwd_in_data_Data));
+                          BackwardInputs::bwd_out_grad_Grad));
     }
   }
 };
