@@ -86,10 +86,10 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
   enum ForwardOutputs { kForOutData, kForOutMean, kForOutVar };
   enum BackwardOutputs { kBackOutData, kBackOutGamma, kBackOutBeta, kBackOutMovingMean, kBackOutMovingVar };
   enum BackwardInputs {
-    /* out_grad */ kBackOutGrad, kBackOutGradMean, kBackOutGradVar,
-    /* in_data */  kBackData, kBackGamma, kBackBeta,
-    /* aux_states */  kBackInMovingMean, kBackInMovingVar,
-    /* in_grad */ kBackInData, kBackInMean, kBackInVar
+    /* out_grad */ bwd_out_grad_Grad, bwd_out_grad_Mean, bwd_out_grad_Var,
+    /* in_data */  bwd_in_data_Data, bwd_in_data_Gamma, bwd_in_data_Beta,
+    /* aux_states */  bwd_aux_states_MovingMean, bwd_aux_states_MovingVar,
+    /* in_grad */ bwd_in_grad_Data, bwd_in_grad_Gamma, bwd_in_grad_Beta
   };
 
   const NDArray *GetForwardInArray(const ForwardInputs idx) const {
@@ -203,16 +203,16 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     Super::resetBackward();
 
     // Join aux arrays
-    *GetArray(kBackInMovingMean) = *GetArray(kForInMovingMean);
-    *GetArray(kBackInMovingVar) = *GetArray(kForInMovingVar);
-    //*GetArray(kBackGamma) = *GetArray(kForGamma);
-    //*GetArray(kBackBeta) = *GetArray(kForBeta);
-    *GetArray(kBackInMean) = *GetArray(kForOutMean);
-    *GetArray(kBackInVar) = *GetArray(kForOutVar);
-    //*GetArray(kBackInData) = *GetArray(kForOutData);
+    *GetArray(bwd_aux_states_MovingMean) = *GetArray(kForInMovingMean);
+    *GetArray(bwd_aux_states_MovingVar) = *GetArray(kForInMovingVar);
+    //*GetArray(bwd_in_data_Gamma) = *GetArray(kForGamma);
+    //*GetArray(bwd_in_data_Beta) = *GetArray(kForBeta);
+    *GetArray(bwd_in_grad_Gamma) = *GetArray(kForOutMean);
+    *GetArray(bwd_in_grad_Beta) = *GetArray(kForOutVar);
+    //*GetArray(bwd_in_grad_Data) = *GetArray(kForOutData);
 
-    *GetArray(kBackOutGamma) = *GetArray(kForGamma);
-    *GetArray(kBackOutBeta) = *GetArray(kForBeta);
+    //*GetArray(kBackOutGamma) = *GetArray(kForGamma);
+    //*GetArray(kBackOutBeta) = *GetArray(kForBeta);
 
 
     // Start by filling all backward inputs and outputs with an arbitrary value
@@ -228,9 +228,9 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
 //    }
 
     DType val = -.001;
-    test::patternFill(&GetBlob(kBackOutGrad), [&val]{ return val += 1; });
-    test::try_fill(&GetBlob(kBackGamma), 0.1);
-    test::try_fill(&GetBlob(kBackBeta), 0.1);
+    test::patternFill(&GetBlob(bwd_out_grad_Grad), [&val]{ return val += 1; });
+    test::try_fill(&GetBlob(bwd_in_data_Gamma), 0.1);
+    test::try_fill(&GetBlob(bwd_in_data_Beta), 0.1);
     test::try_fill(&GetBlob(kBackOutData), 0);
   }
 
@@ -478,19 +478,19 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
 
     if (!info_2.prop_->getParam().use_global_stats) {
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::kBackInMean));
+                          BNOperatorExecutor<DType, AccReal>::bwd_in_grad_Gamma));
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::kBackInVar));
+                          BNOperatorExecutor<DType, AccReal>::bwd_in_grad_Beta));
       // InGrad
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
                           BNOperatorExecutor<DType, AccReal>::kForInData));
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::kBackGamma));
+                          BNOperatorExecutor<DType, AccReal>::bwd_in_data_Gamma));
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::kBackBeta));
+                          BNOperatorExecutor<DType, AccReal>::bwd_in_data_Beta));
       // OutGrad
       EXPECT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BNOperatorExecutor<DType, AccReal>::kBackData));
+                          BNOperatorExecutor<DType, AccReal>::bwd_in_data_Data));
     }
   }
 };
@@ -600,7 +600,7 @@ static StreamType& dumpB(StreamType *os,
 //    PRT(os, *prop.executor_, BlobVectorType::kAux, mxnet::op::batchnorm::kMovingMean);
 //    PRT(os, *prop.executor_, BlobVectorType::kAux, mxnet::op::batchnorm::kMovingVar);
 //
-//    PRT(os, *prop.executor_, BlobVectorType::kOutGrad, mxnet::op::batchnorm::kOut);
+//    PRT(os, *prop.executor_, BlobVectorType::bwd_out_grad_Grad, mxnet::op::batchnorm::kOut);
   }
   return *os;
 }
@@ -1134,7 +1134,7 @@ TEST(BATCH_NORM, TestBackward1D_Simple) {
           { 0.0f },
           { 2.998f }
         },
-        { /* kOutGrad */
+        { /* bwd_out_grad_Grad */
           { 0.999f, 1.999f }
         }
       };

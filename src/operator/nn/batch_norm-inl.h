@@ -47,8 +47,7 @@ namespace mxnet {
 namespace op {
 
 namespace batchnorm {
-enum BatchNormOpInputs {kData, kGamma, kBeta, kInMovingMean,
-  kInMovingVar};  // kGamma: weights, kBeta: biases
+enum BatchNormOpInputs {kData, kGamma, kBeta, kInMovingMean, kInMovingVar};
 enum BatchNormOpOutputs {kOut, kMean, kVar};  // req, out_data
 enum BatchNormOpResource {kTempSpace};
 enum BatchNormOpAuxiliary {kMovingMean, kMovingVar};  // aux_states
