@@ -103,7 +103,7 @@ void BatchNormForwardImpl(mshadow::Stream<cpu> *,
   const TBlob &runningMean     = aux_states[batchnorm::kMovingMean];
   const TBlob &runningVariance = aux_states[batchnorm::kMovingVar];
 
-  // Output
+  // Outputwhy would you think we dont need to?
   batchnorm::BNTensor3<DType> outputData(out_data[batchnorm::kOut], param_.axis);
   const TBlob &meanVector      = out_data[batchnorm::kMean];
   const TBlob &varianceVector  = out_data[batchnorm::kVar];

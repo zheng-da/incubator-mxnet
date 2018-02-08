@@ -298,13 +298,9 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
     return foo::kFlag;
   }
 
-  static nnvm::NodePtr GetBackwardDependency(const nnvm::NodePtr& node,
-                                             uint32_t num_inputs,
-                                             uint32_t num_outputs
-    //std::vector<bool> *p_save_inputs,
-    //std::vector<bool> *p_save_outputs
-  ) {
-
+  nnvm::NodePtr GetBackwardDependency(const nnvm::NodePtr& node,
+                                      std::map<int, const NDArray *>& index2array) const {
+    index2array.clear();
     static auto& fgradient = nnvm::Op::GetAttr<nnvm::FGradient>("FGradient");
 //    std::vector<bool>& save_inputs = *p_save_inputs;
 //    std::vector<bool>& save_outputs = *p_save_outputs;
@@ -313,21 +309,27 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
 //    std::fill(save_inputs.begin(), save_inputs.end(), false);
 //    std::fill(save_outputs.begin(), save_outputs.end(), false);
 
+    const uint32_t num_inputs  = inputs().size();
+    const uint32_t num_outputs = outputs().size();
+
     node->inputs.clear();
     node->inputs.reserve(num_inputs);
     for (uint32_t i = 0; i < num_inputs; ++i) {
       node->inputs.emplace_back(nnvm::NodeEntry{nullptr, i, 0});
+      index2array[i] = &inputs()[i];
     }
 
     if (fgradient.count(node->op())) {
       std::vector<nnvm::NodeEntry> ograd_entries;
       ograd_entries.reserve(num_outputs);
       for (uint32_t i = 0; i < num_outputs; ++i) {
-        ograd_entries.emplace_back(nnvm::NodeEntry{nullptr, i, 1});
+        const uint32_t index = num_inputs + i;
+        ograd_entries.emplace_back(nnvm::NodeEntry{nullptr, index, 1});
+        index2array[index] = &outputs()[i];
       }
       const std::vector<nnvm::NodeEntry> igrad_entries = fgradient[node->op()](node, ograd_entries);
 
-      if(!igrad_entries.empty()) {
+      if (!igrad_entries.empty()) {
         return igrad_entries[0].node;
       }
 
@@ -352,10 +354,10 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
     return nullptr;
   }
 
-  nnvm::NodePtr CalcBackwardPass() const {
+  nnvm::NodePtr CalcBackwardPass(std::map<int, const NDArray *>& index2array) const {
     nnvm::NodePtr node = nnvm::Node::Create();
     node->attrs = attrs_;
-    return GetBackwardDependency(node, inputs().size(), outputs().size());
+    return GetBackwardDependency(node, index2array);
   }
 
   /*!
@@ -386,9 +388,10 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       op_ = nnvm::Op::Get(op_name);
       CHECK_NOTNULL(op_);
 
+      std::map<int, const NDArray *> index2array;
       nnvm::NodePtr bwd_node_ptr;
-      if(backward_for_op) {
-        bwd_node_ptr = backward_for_op->CalcBackwardPass();
+      if (backward_for_op) {
+        bwd_node_ptr = backward_for_op->CalcBackwardPass(index2array);
       }
 
       // Set up forward
@@ -397,12 +400,12 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       int num_inputs = op_->num_inputs;
       if (op_->get_num_inputs) {
         num_inputs = op_->get_num_inputs(attrs_);
-      } else if(backward_for_op) {
+      } else if (backward_for_op) {
         CHECK_NOTNULL(bwd_node_ptr.get());
         num_inputs = static_cast<int>(bwd_node_ptr->inputs.size());
       }
 
-//      if(backward_for_op) {
+//      if (backward_for_op) {
 //        const int num_fwd_outputs = backward_for_op->outputs().size();
 //        num_inputs = std::max(num_fwd_outputs, num_inputs);
 //      }
@@ -423,7 +426,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       }
 
 //      static auto& finput_names = Op::GetAttr<nnvm::FListInputNames>("FListInputNames");
-//      if(finput_names.count(op_)) {
+//      if (finput_names.count(op_)) {
 //        std::vector<std::string> i_names = finput_names[op_](attrs_);
 //        const int i_name_count = i_names.size();
 //        num_inputs = std::max(i_name_count, num_inputs);
@@ -431,7 +434,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       //using FListInputNames = std::function<std::vector<std::string> (const NodeAttrs& attrs)>;
 
 //      static auto& grad_fun_map = Op::GetAttr<nnvm::FGradient>("FGradient");
-//      if(grad_fun_map.count(op_)) {
+//      if (grad_fun_map.count(op_)) {
 //        auto grad_fun = grad_fun_map[op_];
 //        nnvm::NodePtr nodeptr = std::make_shared<nnvm::Node>();
 //        nodeptr->attrs = attrs_;
@@ -475,9 +478,38 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
         CHECK_EQ(input_types.size(), num_inputs);
         CHECK_EQ(output_types.size(), inferred_num_outputs);
       } else {
-        for(size_t x = 0; x < inferred_num_outputs; ++x) {
-          output_types.emplace_back(default_dtype());
-          input_types.emplace_back(default_dtype());
+        if (backward_for_op) {
+          if(bwd_node_ptr) {
+            CHECK_EQ(bwd_node_ptr->inputs.size(), num_inputs);
+            input_types.resize(bwd_node_ptr->inputs.size(), -1);
+            for (size_t i = 0; i < num_inputs; ++i) {
+              const int map_key = bwd_node_ptr->inputs[i].index;
+              CHECK(index2array.find(map_key) != index2array.end());
+              const int dtype = index2array[map_key]->dtype();
+              input_types[i] = dtype;
+              std::cout << "Bwd input type " << i << ": " << dtype << std::endl << std::flush;
+            }
+            for (const auto &fwd_inp : backward_for_op->inputs()) {
+              const int dtype = fwd_inp.data().type_flag_;
+              output_types.emplace_back(dtype);
+            }
+          } else {
+            for (size_t x = 0; x < num_inputs; ++x) {
+              input_types.emplace_back(default_dtype());
+            }
+            for (const auto &fwd_inp : backward_for_op->inputs()) {
+              const int dtype = fwd_inp.data().type_flag_;
+              output_types.emplace_back(dtype);
+            }
+          }
+        } else {
+          CHECK(false); // above always true?
+          for (size_t x = 0; x < num_inputs; ++x) {
+            input_types.emplace_back(default_dtype());
+          }
+          for (size_t x = 0; x < inferred_num_outputs; ++x) {
+            output_types.emplace_back(default_dtype());
+          }
         }
       }
 
@@ -492,7 +524,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       }
 
       // Output arrays
-      if(outputs_.empty()) {
+      if (outputs_.empty()) {
         std::vector<nnvm::TShape> output_shapes;
         static auto& finfer_shape = Op::GetAttr<nnvm::FInferShape>("FInferShape");
         if (finfer_shape.count(op_)) {

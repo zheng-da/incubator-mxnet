@@ -18,9 +18,9 @@
  */
 
 /*!
- * Copyright (c) 2017 by Contributors
+ * Copyright (c) 2018 by Contributors
  * \file batchnorm_test.cc
- * \brief batchnorm operator unit test utility functions
+ * \brief batchnorm operator unit tests and utility functions
  * \author Chris Olivier
 */
 
@@ -82,19 +82,6 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     param_.Init(kwargs);
   }
 
-  //using BlobVectorType = typename test::op::CoreOpExecutor<DType, AccReal>::BlobVectorType;
-/*
-  enum DataBlobs {
-    kInputData,
-    kOutputData,
-    kOutputGrad,
-    kInputGrad,
-    kGamma,
-    kBeta,
-    kMovingMean,
-    kMovingVar
-  };
-*/
   enum ForwardInputs { kForInData, kForGamma, kForBeta, kForInMovingMean, kForInMovingVar };
   enum ForwardOutputs { kForOutData, kForOutMean, kForOutVar };
   enum BackwardOutputs { kBackOutData, kBackOutGamma, kBackOutBeta, kBackOutMovingMean, kBackOutMovingVar };
@@ -102,12 +89,6 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     kBackGamma, kBackBeta, kBackInMovingMean, kBackInMovingVar, kBackInData, kBackInMean,
     kBackInVar };
 
-//  enum WhichArray {
-//    kForwardIn,
-//    kForwardOut,
-//    kBackwardIn,
-//    kBackwardOut
-//  };
 
   const NDArray *GetForwardInArray(const ForwardInputs idx) const {
     const std::vector<NDArray> &arrs = Super::inputs();
@@ -137,40 +118,17 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     return const_cast<NDArray *>(GetForwardInArray(idx));
   }
 
-  const NDArray *GetArray(const ForwardOutputs idx) {
+  NDArray *GetArray(const ForwardOutputs idx) {
     return const_cast<NDArray *>(GetForwardOutArray(idx));
   }
 
-  const NDArray *GetArray(const BackwardOutputs idx) {
+  NDArray *GetArray(const BackwardOutputs idx) {
     return const_cast<NDArray *>(GetBackwardOutArray(idx));
   }
 
   NDArray *GetArray(const BackwardInputs idx) {
     return const_cast<NDArray *>(GetBackwardInArray(idx));
   }
-
-  const TBlob *GetBackwardInBlob(const BackwardInputs idx) {
-    const NDArray * arr = GetBackwardInArray(idx);
-    if(arr) {
-      return &arr->data();
-    }
-    return nullptr;
-  }
-
-//  const NDArray *GetArray(const WhichArray wa, const int idx) {
-//    switch(wa) {
-//      case kForwardIn:
-//        return GetForwardInArray(idx);
-//      case kForwardOut:
-//        return GetForwardOutArray(idx);
-//      case kBackwardIn:
-//        return GetBackwardOutArray(idx);
-//      case kBackwardOut:
-//      default:
-//        CHECK(false);  // need to check params
-//        return nullptr;
-//    }
-//  }
 
   inline const TBlob& Blob(const NDArray *arr) { return arr->data(); }
 
@@ -251,6 +209,9 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     *GetArray(kBackInVar) = *GetArray(kForOutVar);
     *GetArray(kBackInData) = *GetArray(kForOutData);
 
+    *GetArray(kBackOutGamma) = *GetArray(kForGamma);
+    *GetArray(kBackOutBeta) = *GetArray(kForBeta);
+
     // Start by filling all backward inputs and outputs with an arbitrary value
 //    for (size_t i = 0, n = Super::bwd_inputs().size(); i < n; ++i) {
 //      const TBlob& out = Blob(&Super::bwd_inputs()[i]);
@@ -265,41 +226,9 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
 
     DType val = -.001;
     test::patternFill(&GetBlob(kBackOutGrad), [&val]{ return val += 1; });
-
-    // out-grad weights
     test::try_fill(&GetBlob(kBackGamma), 0.1);
-
-    // out-grad biases
     test::try_fill(&GetBlob(kBackBeta), 0.1);
-
-    // in-grad
     test::try_fill(&GetBlob(kBackOutData), 0);
-
-//    MSHADOW_TYPE_SWITCH(
-//      GetBlob(kBackInMovingMean).type_flag_,
-//      DTypeX,
-//      { test::try_fill(&GetBlob(kBackInMovingMean), DTypeX(0.5)); });
-//
-//    MSHADOW_TYPE_SWITCH(
-//      GetBlob(kBackInMovingVar).type_flag_,
-//      DTypeX,
-//      { test::try_fill(&GetBlob(kBackInMovingVar), DTypeX(1.25)); });
-
-    // in-grad weights
-//    if (mxnet::op::batchnorm::kGamma < this->c_.blob_in_grad_.size()) {
-//      MSHADOW_TYPE_SWITCH(
-//        this->c_.blob_in_grad_[mxnet::op::batchnorm::kGamma].type_flag_,
-//        DTypeX,
-//        { test::try_fill(this->c_.blob_in_grad_, mxnet::op::batchnorm::kGamma, DTypeX(1)); });
-//    }
-//
-//    // in-grad biases
-//    if (mxnet::op::batchnorm::kBeta < this->c_.blob_in_grad_.size()) {
-//      MSHADOW_TYPE_SWITCH(
-//        this->c_.blob_in_grad_[mxnet::op::batchnorm::kBeta].type_flag_,
-//        DTypeX,
-//        { test::try_fill(this->c_.blob_in_grad_, mxnet::op::batchnorm::kBeta, DTypeX(0)); });
-//    }
   }
 
   const bool hasWeightAndBias_;  // This will cause forward pass validation to fail
