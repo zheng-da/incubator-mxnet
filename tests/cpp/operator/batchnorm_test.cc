@@ -437,8 +437,10 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
                              const ExecutorType2& i2,
                              const EnumType idx,
                              bool print = false) {
-    const TBlob& b1 = i1.GetBlob(idx);
-    const TBlob& b2 = i2.GetBlob(idx);
+    test::CAccessAsCPU cpu1(i1.ctx().run_ctx, i1.GetBlob(idx), false),
+      cpu2(i2.ctx().run_ctx, i2.GetBlob(idx), false);
+    const TBlob& b1 = cpu1();
+    const TBlob& b2 = cpu2();
     if (print && test::debug_output) {
       test::print(RunContext(), &(std::cout << "Blob 1:"), b1, true, true);
       test::print(RunContext(), &(std::cout << "Blob 2:"), b2, true, true);

@@ -170,7 +170,7 @@ class CAccessAsCPU {
       Context cpu_ctx, gpu_ctx = run_ctx.ctx;
       cpu_ctx.dev_type = Context::kCPU;
       cpu_ctx.dev_id = 0;
-      NDArray on_cpu(src.shape_, cpu_ctx);
+      NDArray on_cpu(src.shape_, cpu_ctx, false, src_.type_flag_);
       on_cpu.CheckAndAlloc();
       blob_ = on_cpu.data();
       mxnet::ndarray::Copy<gpu, cpu>(src, &blob_, cpu_ctx, gpu_ctx, run_ctx);
@@ -222,7 +222,7 @@ static inline void AccessAsCPU(const NDArray &src,
     Context cpu_ctx, gpu_ctx = src.ctx();
     cpu_ctx.dev_type = Context::kCPU;
     cpu_ctx.dev_id = 0;
-    NDArray on_cpu(src.shape(), cpu_ctx);
+    NDArray on_cpu(src.shape(), cpu_ctx, false, src.dtype());
     on_cpu.CheckAndAlloc();
     TBlob tmp1 = on_cpu.data();
     mxnet::ndarray::Copy<gpu, cpu>(src.data(), &tmp1, cpu_ctx, gpu_ctx, run_ctx);
