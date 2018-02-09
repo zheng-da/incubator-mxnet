@@ -72,6 +72,7 @@ static constexpr int TIMING_DW = 28;
 template <typename DType, typename AccReal>
 class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
   using Super = typename test::op::CoreOpExecutor<DType, AccReal>;
+  using Super::ctx;
  public:
   BNOperatorExecutor(const bool isGPU, const TShape& inputShape,
                      const test::op::kwargs_t& kwargs,
@@ -158,26 +159,26 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
 
     // Start by filling all inputs and outputs with an arbitrary values
     for (size_t i = 0, n = Super::inputs().size(); i < n; ++i) {
-      test::fill(Super::inputs()[i].data(), 0.1234);
+      test::try_fill(ctx().run_ctx, &Super::inputs()[i].data(), 0.1234);
     }
     for (size_t i = 0, n = Super::outputs().size(); i < n; ++i) {
-      test::fill(Super::outputs()[i].data(), 0.5678);
+      test::try_fill(ctx().run_ctx, &Super::outputs()[i].data(), 0.5678);
     }
     for (size_t i = 0, n = Super::bwd_inputs().size(); i < n; ++i) {
-      test::fill(Super::bwd_inputs()[i].data(), 0.9012);
+      test::try_fill(ctx().run_ctx, &Super::bwd_inputs()[i].data(), 0.9012);
     }
     for (size_t i = 0, n = Super::outputs().size(); i < n; ++i) {
-      test::fill(Super::bwd_outputs()[i].data(), 0.3456);
+      test::try_fill(ctx().run_ctx, &Super::bwd_outputs()[i].data(), 0.3456);
     }
     // Init input data
     double val = 0;
-    test::patternFill(&GetBlob(kForInData), [&val]() -> double { return val += 1; });
+    test::patternFill(ctx().run_ctx, &GetBlob(kForInData), [&val]() -> double { return val += 1; });
 
     MSHADOW_TYPE_SWITCH(
       Blob(GetForwardInArray(kForGamma)).type_flag_,
       DTypeX, {
         const TBlob& blob = Blob(GetForwardInArray(kForGamma));
-        test::fill(blob, DTypeX(1));
+        test::fill(ctx().run_ctx, blob, DTypeX(1));
         if (hasWeightAndBias_) {
           if (blob.size(0) > 1) {
             blob.dptr<DTypeX>()[1] = DTypeX(3);
@@ -189,9 +190,9 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
       DTypeX, {
         const TBlob& blob = Blob(GetForwardInArray(kForBeta));
         if (!hasWeightAndBias_) {
-          test::fill(blob, DTypeX(0));
+          test::fill(ctx().run_ctx, blob, DTypeX(0));
         } else {  // This will cause forward pass check to fail when calculating sum == 0
-          test::fill(blob, DTypeX(1));
+          test::fill(ctx().run_ctx, blob, DTypeX(1));
           if (blob.size(0) > 0) {
             blob.dptr<DTypeX>()[0] = DTypeX(3);
           }
@@ -202,15 +203,15 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     MSHADOW_TYPE_SWITCH(
       Blob(GetForwardInArray(kForMovingMean)).type_flag_,
       DTypeX, {
-        test::fill(Blob(GetForwardInArray(kForMovingMean)), DTypeX(0));
+        test::fill(ctx().run_ctx, Blob(GetForwardInArray(kForMovingMean)), DTypeX(0));
       });
     MSHADOW_TYPE_SWITCH(
       Blob(GetForwardInArray(kForMovingVar)).type_flag_,
       DTypeX, {
-        test::fill(Blob(GetForwardInArray(kForMovingVar)), DTypeX(1));
+        test::fill(ctx().run_ctx, Blob(GetForwardInArray(kForMovingVar)), DTypeX(1));
       });
-    test::try_fill(&GetBlob(kForOutMean), 0.1);
-    test::try_fill(&GetBlob(kForOutVar), 999.99);
+    test::try_fill(ctx().run_ctx, &GetBlob(kForOutMean), 0.1);
+    test::try_fill(ctx().run_ctx, &GetBlob(kForOutVar), 999.99);
   }
 
   void resetBackward() override {
@@ -228,18 +229,20 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     *GetArray(bwd_aux_states_MovingVar) = *GetArray(kForMovingVar);
 
     double val = -.101;
-    test::patternFill(&GetBlob(bwd_out_data_Data), [&val]() -> double { return val += 1; });
-    test::try_fill(&GetBlob(bwd_out_data_Gamma), 1.0);
-    test::try_fill(&GetBlob(bwd_out_data_Beta), 0.0);
+    test::patternFill(ctx().run_ctx, &GetBlob(bwd_out_data_Data), [&val]() -> double {
+      return val += 1; });
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_data_Gamma), 1.0);
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_data_Beta), 0.0);
 
     val = -.001;
-    test::patternFill(&GetBlob(bwd_out_grad_Grad), [&val]() -> double { return val += 1; });
-    test::try_fill(&GetBlob(bwd_out_grad_Mean), 0.1);
-    test::try_fill(&GetBlob(bwd_out_grad_Var), 0.15);
+    test::patternFill(ctx().run_ctx, &GetBlob(bwd_out_grad_Grad), [&val]() -> double {
+      return val += 1; });
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_grad_Mean), 0.1);
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_grad_Var), 0.15);
 
-    test::try_fill(&GetBlob(bwd_in_grad_Data), 0);
-    test::try_fill(&GetBlob(bwd_in_grad_Gamma), 1.0);
-    test::try_fill(&GetBlob(bwd_in_grad_Beta), 0.0);
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Data), 0);
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Gamma), 1.0);
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Beta), 0.0);
 
     //test::print(RunContext(), &std::cout, GetArray(bwd_in_data_Data)->data());
   }
@@ -961,7 +964,7 @@ TEST(BATCH_NORM, TestStochasticTiming_2D) {
     mshadow::kFloat32, DType, AccReal,
     {
       timingTest<BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>>(
-        "RANDOM: BatchNormProp<cpu>", false, true,
+        "RANDOM: BatchNormCoreOpProp<cpu>", false, true,
         blank_kwargs_nocudnn, GPU_TEST_DIMENSIONS); });
 #if MXNET_USE_CUDA
   if (test::unitTestsWithCuda) {
@@ -969,7 +972,7 @@ TEST(BATCH_NORM, TestStochasticTiming_2D) {
       mshadow::kFloat32, DType, AccReal,
       {
         timingTest<BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>>(
-          "RANDOM: BatchNormProp<gpu>", true, true,
+          "RANDOM: BatchNormCoreOpProp<gpu>", true, true,
           blank_kwargs_nocudnn, GPU_TEST_DIMENSIONS); });
   }
 #endif

@@ -133,13 +133,11 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
    * \param ctx Context to use when creating the array/tensor
    * \return The created NDArray
    */
-  NDArray CreateRandArray(const TShape& shape, const Context& ctx, int dtype) const {
+  NDArray CreateRandArray(const TShape& shape, const RunContext& run_ctx, int dtype) const {
     CHECK_GT(shape.Size(), 0);  // Check it's a valid shape
-    NDArray array(shape, ctx, true, dtype);
+    NDArray array(shape, run_ctx.ctx, true, dtype);
     array.CheckAndAlloc();
-    AccessAsCPU(array, ctx_.run_ctx, [this](const NDArray &arr) {
-      test::op::OperatorDataInitializer<DType>::FillRandom(arr.data());
-    });
+    test::op::OperatorDataInitializer<DType>::FillRandom(run_ctx, array.data());
     return array;
   }
 
@@ -149,13 +147,12 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
    * \param ctx Context to use when creating the array/tensor
    * \return The created NDArray
    */
-  NDArray CreateZeroArray(const TShape& shape, const Context& ctx, int dtype) const {
+  NDArray CreateZeroArray(const TShape& shape, const RunContext& run_ctx, int dtype) const {
     CHECK_GT(shape.Size(), 0);  // Check it's a valid shape
-    NDArray array(shape, ctx, true, dtype);
+    NDArray array(shape, run_ctx.ctx, true, dtype);
     array.CheckAndAlloc();
-    AccessAsCPU(array, ctx_.run_ctx, [this](const NDArray &arr) {
-      test::op::OperatorDataInitializer<DType>::FillZero(arr.data());
-    });
+    //test::op::OperatorDataInitializer<DType>::FillZero(run_ctx, array.data());
+    CHECK(false);
     return array;
   }
 
@@ -558,7 +555,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
           outputs_.emplace_back(i < outputs.size() ? outputs[i]
                                                    : (backward_for_op
                                                       ? CreateZeroArray(output_shapes[i],
-                                                                        ctx_.run_ctx.ctx,
+                                                                        ctx_.run_ctx,
                                                                         output_types[i])
                                                       : NDArray()));
           outputs_p.emplace_back(&*outputs_.rbegin());
@@ -569,7 +566,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
         CHECK_LT(i, static_cast<int>(input_shapes.size()));
         inputs_.emplace_back(i < inputs.size()
                              ? inputs[i] : CreateRandArray(input_shapes[i],
-                                                           ctx_.run_ctx.ctx,
+                                                           ctx_.run_ctx,
                                                            input_types[i]));
         inputs_p.emplace_back(&*inputs_.rbegin());
       }

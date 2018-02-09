@@ -34,6 +34,8 @@
 #include <sstream>
 #include <random>
 
+#include "../../../src/ndarray/ndarray_function.h"
+
 #if MXNET_USE_VTUNE
 #include <ittnotify.h>
 #endif
@@ -148,39 +150,83 @@ inline StandaloneBlob BlobOnCPU(const RunContext &rctx, const TBlob& src) {
   }
   return res;
 }
+
+struct CPUBlob {
+  std::unique_ptr<StandaloneBlob> cpu_blob_;
+  RunContext rctx_;
+  const TBlob *blob_ = nullptr;
+  const TBlob *src_;
+  CPUBlob(const RunContext &rctx, const TBlob& src) : rctx_(rctx), src_(&src) {
+    if (src.dev_mask() == cpu::kDevMask) {
+      blob_ = &src;
+    } else {
+      cpu_blob_.reset(new StandaloneBlob(BlobOnCPU(rctx, src)));
+    }
+  }
+  ~CPUBlob() {
+    if(cpu_blob_) {
+      mshadow::Stream<gpu> *stream = rctx_.get_stream<gpu>();
+      MSHADOW_TYPE_SWITCH(src_->type_flag_, DType, {
+        mshadow::Copy(cpu_blob_->FlatTo1D<gpu, DType>(stream),
+                      src_->FlatTo1D<cpu, DType>(), stream);
+      });
+    }
+  }
+  const TBlob& operator ()() const { return *blob_; }
+};
+
 #endif  // MXNET_USE_CUDA
 
-constexpr const size_t MPRINT_PRECISION = 5;
+template <typename CallbackFunction>
+static inline void AccessAsCPU(const TBlob& src,
+                               const RunContext &run_ctx,
+                               CallbackFunction cb) {
+#if MXNET_USE_CUDA
+  if (run_ctx.ctx.dev_type == Context::kCPU) {
+    cb(src);
+  } else {
+    Context cpu_ctx, gpu_ctx = run_ctx.ctx;
+    cpu_ctx.dev_type = Context::kCPU;
+    cpu_ctx.dev_id = 0;
+    NDArray on_cpu(src.shape_, cpu_ctx);
+    on_cpu.CheckAndAlloc();
+    TBlob tmp1 = on_cpu.data();
+    mxnet::ndarray::Copy<gpu, cpu>(src, &tmp1, cpu_ctx, gpu_ctx, run_ctx);
+    cb(tmp1);
+    TBlob tmp2 = src;
+    mxnet::ndarray::Copy<cpu, gpu>(on_cpu.data(), &tmp2, gpu_ctx, cpu_ctx, run_ctx);
+  }
+#else
+  cb(src);
+#endif
+}
 
+constexpr const size_t MPRINT_PRECISION = 5;
 template<typename DType>
-inline void fill(const TBlob& blob, const DType val) {
-  MSHADOW_TYPE_SWITCH(blob.type_flag_, DTypeX, {
-    DTypeX *p1 = blob.dptr<DTypeX>();
-    for (size_t i = 0, n = blob.Size(); i < n; ++i) {
-      *p1++ = val;
-    }
+inline void fill(const RunContext &run_ctx, const TBlob& _blob, const DType val) {
+  AccessAsCPU(_blob, run_ctx, [&run_ctx, val](const TBlob& blob) {
+    MSHADOW_TYPE_SWITCH(blob.type_flag_, DTypeX, {
+      DTypeX *p1 = blob.dptr<DTypeX>();
+      for (size_t i = 0, n = blob.Size(); i < n; ++i) {
+        *p1++ = val;
+      }
+    });
   });
 }
 
 template<typename DType>
-inline void try_fill(const TBlob *blob, const DType val) {
+inline void try_fill(const RunContext &run_ctx, const TBlob *blob, const DType val) {
   if(blob) {
-    MSHADOW_TYPE_SWITCH(blob->type_flag_, DTypeX, {
-      DTypeX *p1 = blob->dptr<DTypeX>();
-      for (size_t i = 0, n = blob->Size(); i < n; ++i) {
-        *p1++ = val;
-      }
-
-    });
+    fill(run_ctx, *blob, val);
   }
 }
 
-template<typename DType>
-inline void try_fill(const std::vector<TBlob>& container, size_t index, const DType value) {
-  if (index < container.size()) {
-    test::fill(container[index], value);
-  }
-}
+//template<typename DType>
+//inline void try_fill(const std::vector<TBlob>& container, size_t index, const DType value) {
+//  if (index < container.size()) {
+//    test::fill(container[index], value);
+//  }
+//}
 
 template<typename DType, typename Stream>
 inline void dump(Stream *os, const TBlob& blob, const char *suffix = "f") {
@@ -404,7 +450,8 @@ inline StreamType& print_blob_(const RunContext& ctx,
     if (add_endl) {
       os << std::endl;
     }
-  } else if (!add_endl) {
+  } else
+  if (!add_endl) {
     os << " ";
   } else {
     os << std::endl;
@@ -552,71 +599,75 @@ inline std::string type_name() { return demangle(typeid(T).name()); }
  *  3D: batch item -> channel -> col
  */
 template<typename GetNextData>
-static inline void patternFill(const TBlob *blob, GetNextData getNextData) {
-  const size_t dim = static_cast<size_t>(blob->ndim());
-  CHECK_LE(dim, 5U) << "Will need to handle above 3 dimensions (another for loop)";
-  const size_t num = blob->size(0);
-  const size_t channels = dim > 1 ? blob->size(1) : 1;
-  const size_t depth = dim > 2 ? blob->size(2) : 1;
-  const size_t height = dim > 3 ? blob->size(3) : 1;
-  const size_t width = dim > 4 ? blob->size(4) : 1;
-  const size_t numberOfIndexes = blob->shape_.Size();
-  for (size_t n = 0; n < num; ++n) {
-    if (dim > 1) {
-      for (size_t ch = 0; ch < channels; ++ch) {
-        if (dim > 2) {
-          for (size_t d = 0; d < depth; ++d) {
-            if (dim > 3) {
-              for (size_t row = 0; row < height; ++row) {
-                if (dim > 4) {
-                  for (size_t col = 0; col < width; ++col) {
-                    if (dim == 5) {
-                      const size_t idx = test::offset(blob->shape_, {n, ch, d, row, col});
-                      CHECK_LT(idx, numberOfIndexes);
-                      MSHADOW_TYPE_SWITCH(blob->type_flag_, ThisDataType, {
-                        ThisDataType &f = blob->dptr<ThisDataType>()[idx];
-                        f = getNextData();
-                      });
-                    } else {
-                      CHECK(dim <= 5) << "Unimplemented dimension: " << dim;
+static inline void patternFill(const RunContext& run_ctx,
+                               const TBlob *_blob,
+                               GetNextData getNextData) {
+  AccessAsCPU(*_blob, run_ctx, [getNextData](const TBlob& blob) {
+    const size_t dim = static_cast<size_t>(blob.ndim());
+    CHECK_LE(dim, 5U) << "Will need to handle above 3 dimensions (another for loop)";
+    const size_t num = blob.size(0);
+    const size_t channels = dim > 1 ? blob.size(1) : 1;
+    const size_t depth = dim > 2 ? blob.size(2) : 1;
+    const size_t height = dim > 3 ? blob.size(3) : 1;
+    const size_t width = dim > 4 ? blob.size(4) : 1;
+    const size_t numberOfIndexes = blob.shape_.Size();
+    for (size_t n = 0; n < num; ++n) {
+      if (dim > 1) {
+        for (size_t ch = 0; ch < channels; ++ch) {
+          if (dim > 2) {
+            for (size_t d = 0; d < depth; ++d) {
+              if (dim > 3) {
+                for (size_t row = 0; row < height; ++row) {
+                  if (dim > 4) {
+                    for (size_t col = 0; col < width; ++col) {
+                      if (dim == 5) {
+                        const size_t idx = test::offset(blob.shape_, {n, ch, d, row, col});
+                        CHECK_LT(idx, numberOfIndexes);
+                        MSHADOW_TYPE_SWITCH(blob.type_flag_, ThisDataType, {
+                          ThisDataType &f = blob.dptr<ThisDataType>()[idx];
+                          f = getNextData();
+                        });
+                      } else {
+                        CHECK(dim <= 5) << "Unimplemented dimension: " << dim;
+                      }
                     }
+                  } else {
+                    const size_t idx = test::offset(blob.shape_, {n, ch, d, row});
+                    CHECK_LT(idx, numberOfIndexes);
+                    MSHADOW_TYPE_SWITCH(blob.type_flag_, ThisDataType, {
+                      ThisDataType &f = blob.dptr<ThisDataType>()[idx];
+                      f = getNextData();
+                    });
                   }
-                } else {
-                  const size_t idx = test::offset(blob->shape_, {n, ch, d, row});
-                  CHECK_LT(idx, numberOfIndexes);
-                  MSHADOW_TYPE_SWITCH(blob->type_flag_, ThisDataType, {
-                    ThisDataType &f = blob->dptr<ThisDataType>()[idx];
-                    f = getNextData();
-                  });
                 }
+              } else {
+                const size_t idx = test::offset(blob.shape_, {n, ch, d});
+                CHECK_LT(idx, numberOfIndexes);
+                MSHADOW_TYPE_SWITCH(blob.type_flag_, ThisDataType, {
+                  ThisDataType &f = blob.dptr<ThisDataType>()[idx];
+                  f = getNextData();
+                });
               }
-            } else {
-              const size_t idx = test::offset(blob->shape_, {n, ch, d});
-              CHECK_LT(idx, numberOfIndexes);
-              MSHADOW_TYPE_SWITCH(blob->type_flag_, ThisDataType, {
-                ThisDataType &f = blob->dptr<ThisDataType>()[idx];
-                f = getNextData();
-              });
             }
+          } else {
+            const size_t idx = test::offset(blob.shape_, {n, ch});
+            CHECK_LT(idx, numberOfIndexes);
+            MSHADOW_TYPE_SWITCH(blob.type_flag_, ThisDataType, {
+              ThisDataType &f = blob.dptr<ThisDataType>()[idx];
+              f = getNextData();
+            });
           }
-        } else {
-          const size_t idx = test::offset(blob->shape_, {n, ch});
-          CHECK_LT(idx, numberOfIndexes);
-          MSHADOW_TYPE_SWITCH(blob->type_flag_, ThisDataType, {
-            ThisDataType &f = blob->dptr<ThisDataType>()[idx];
-            f = getNextData();
-          });
         }
+      } else {
+        const size_t idx = test::offset(blob.shape_, {n});
+        CHECK_LT(idx, numberOfIndexes);
+        MSHADOW_TYPE_SWITCH(blob.type_flag_, ThisDataType, {
+          ThisDataType &f = blob.dptr<ThisDataType>()[idx];
+          f = getNextData();
+        });
       }
-    } else {
-      const size_t idx = test::offset(blob->shape_, {n});
-      CHECK_LT(idx, numberOfIndexes);
-      MSHADOW_TYPE_SWITCH(blob->type_flag_, ThisDataType, {
-        ThisDataType &f = blob->dptr<ThisDataType>()[idx];
-        f = getNextData();
-      });
     }
-  }
+  });
 }
 
 /*! \brief Return a random number within a given range (inclusive) */
