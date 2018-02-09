@@ -569,7 +569,7 @@ static bool isUGS(const test::op::kwargs_t& kwargs) {
  *                            __/ |                  | |
  *                           |___/                   |_|
  */
-template<typename StreamType, typename OperatorExecutor>
+  template<typename StreamType, typename OperatorExecutor>
 static StreamType& PRT(StreamType *os, const OperatorExecutor& obj,
                        const typename OperatorExecutor::BlobVectorType bvt, const size_t idx) {
   *os << OperatorExecutor::bvt2String(bvt) << ": " << idx
@@ -1439,7 +1439,6 @@ TEST(BATCH_NORM, TestChannelAxisSimple) {
                      useSimpleData);
 }
 
-#if 0
 /*! \brief Test varying channel axis shapes
  *  For several channel counts (1-3), test that result data (after reshape) is
  *  equivalent for the default (channel position 1) and all other channel positions
@@ -1487,7 +1486,6 @@ TEST(BATCH_NORM, TestChannelAxis) {
     kwargs.pop_back();
   }
 }
-#endif
 
 #if MXNET_USE_CUDA
 
