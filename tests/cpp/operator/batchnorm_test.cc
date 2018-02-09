@@ -58,6 +58,33 @@ static constexpr int TIMING_DEPTH = 2;
 static constexpr int TIMING_DH = 28;
 static constexpr int TIMING_DW = 28;
 
+#define PRT(__lbl$, __var$) test::print(ctx.run_ctx, &(std::cout << (__lbl$) << ": "), (__var$), true)
+
+/*!
+ * \brief Forward
+ */
+enum ForwardInputs {
+  /* in_data */     kForInData, kForGamma, kForBeta,
+  /* aux_states */  kForMovingMean, kForMovingVar
+};
+enum ForwardOutputs {
+  /* outputs */     kForOutData , kForOutMean, kForOutVar
+};
+
+/*!
+ * \brief Backward
+ */
+enum BackwardInputs {
+  /* out_grad */    bwd_out_grad_Grad, bwd_out_grad_Mean, bwd_out_grad_Var,
+  /* in_data */     bwd_in_data_Data, bwd_in_data_Gamma, bwd_in_data_Beta,
+  /* aux_states */  bwd_aux_states_MovingMean, bwd_aux_states_MovingVar,
+  /* in_grad */     bwd_out_data_Data, bwd_out_data_Mean, bwd_out_data_Var
+};
+enum BackwardOutputs {
+  /* in_grad */     bwd_in_grad_Data /* Original input data */,
+  bwd_in_grad_Gamma, bwd_in_grad_Beta
+};
+
 /**
  *  _____        _           _____       _  _
  * |  __ \      | |         |_   _|     (_)| |
@@ -83,31 +110,6 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
       , hasWeightAndBias_(hasWeightAndBias) {
     param_.Init(kwargs);
   }
-
-  /*!
-   * \brief Forward
-   */
-  enum ForwardInputs {
-    /* in_data */     kForInData, kForGamma, kForBeta,
-    /* aux_states */  kForMovingMean, kForMovingVar
-  };
-  enum ForwardOutputs {
-    /* outputs */     kForOutData , kForOutMean, kForOutVar
-  };
-
-  /*!
-   * \brief Backward
-   */
-  enum BackwardInputs {
-    /* out_grad */    bwd_out_grad_Grad, bwd_out_grad_Mean, bwd_out_grad_Var,
-    /* in_data */     bwd_in_data_Data, bwd_in_data_Gamma, bwd_in_data_Beta,
-    /* aux_states */  bwd_aux_states_MovingMean, bwd_aux_states_MovingVar,
-    /* in_grad */     bwd_out_data_Data, bwd_out_data_Gamma, bwd_out_data_Beta
-  };
-  enum BackwardOutputs {
-    /* in_grad */     bwd_in_grad_Data /* Original input data */,
-                      bwd_in_grad_Gamma, bwd_in_grad_Beta
-  };
 
   const NDArray *GetForwardInArray(const ForwardInputs idx) const {
     const std::vector<NDArray> &arrs = Super::inputs();
@@ -202,37 +204,45 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
       });
 
     // Init the moving data (all mean = 0, all var = 1)
-    MSHADOW_TYPE_SWITCH(
-      Blob(GetForwardInArray(kForMovingMean)).type_flag_,
-      DTypeX, {
-        test::fill(ctx().run_ctx, Blob(GetForwardInArray(kForMovingMean)), DTypeX(0));
-      });
-    MSHADOW_TYPE_SWITCH(
-      Blob(GetForwardInArray(kForMovingVar)).type_flag_,
-      DTypeX, {
-        test::fill(ctx().run_ctx, Blob(GetForwardInArray(kForMovingVar)), DTypeX(1));
-      });
-    test::try_fill(ctx().run_ctx, &GetBlob(kForOutMean), 0.1);
-    test::try_fill(ctx().run_ctx, &GetBlob(kForOutVar), 999.99);
+    test::try_fill(ctx().run_ctx, &GetBlob(kForMovingMean), 0);
+    test::try_fill(ctx().run_ctx, &GetBlob(kForMovingVar), 1);
+    test::try_fill(ctx().run_ctx, &GetBlob(kForOutMean), 0);
+    test::try_fill(ctx().run_ctx, &GetBlob(kForOutVar), 1);
   }
 
   void resetBackward() override {
     Super::resetBackward();
 
     // Join forward input and in_data array
+    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_in_data_Data));
     *GetArray(bwd_in_data_Data)  = *GetArray(kForInData);
+    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_in_data_Data));
+
     *GetArray(bwd_in_data_Gamma) = *GetArray(kForGamma);
     *GetArray(bwd_in_data_Beta)  = *GetArray(kForBeta);
 
+    //*GetArray(bwd_out_data_Data)  = *GetArray(kForOutData);
+    *GetArray(bwd_out_data_Mean) = *GetArray(kForOutMean);
+    *GetArray(bwd_out_data_Var)  = *GetArray(kForOutVar);
+
+//    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_out_data_Mean));
+//    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_out_data_Var));
+
     // Join aux arrays
+    //test::try_fill(ctx().run_ctx, &GetBlob(bwd_aux_states_MovingMean), 0);
+    //test::try_fill(ctx().run_ctx, &GetBlob(bwd_aux_states_MovingVar), 1);
     *GetArray(bwd_aux_states_MovingMean) = *GetArray(kForMovingMean);
     *GetArray(bwd_aux_states_MovingVar) = *GetArray(kForMovingVar);
+
+    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_aux_states_MovingMean));
+    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_aux_states_MovingVar));
+
 
     double val = -.101;
     test::patternFill(ctx().run_ctx, &GetBlob(bwd_out_data_Data), [&val]() -> double {
       return val += 1; });
-    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_data_Gamma), 1.0);
-    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_data_Beta), 0.0);
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_data_Mean), 1.0);
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_data_Var), 0.0);
 
     val = -.001;
     test::patternFill(ctx().run_ctx, &GetBlob(bwd_out_grad_Grad), [&val]() -> double {
@@ -453,7 +463,7 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
   /*! \brief Check batch norm output */
   template<typename BNOperatorProp>
   static void validateForward(const RunContext& run_ctx, const BNOperatorProp& data) {
-    const TBlob &outputBlob = data.GetBlob(BNOperatorProp::kForOutData);
+    const TBlob &outputBlob = data.GetBlob(ForwardOutputs::kForOutData);
     if (test::debug_output) {
       test::print(run_ctx, &(std::cout << "Fwd Output Blob:"), outputBlob, true, true);
     }
@@ -480,10 +490,6 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
   static void compare(
     const test::op::OpInfo<PropType1, BNOperatorExecutor<DType, AccReal>>& info_1,
     const test::op::OpInfo<PropType2, BNOperatorExecutor<DType, AccReal>>& info_2) {
-    using ForwardInputs = typename BNOperatorExecutor<DType, AccReal>::ForwardInputs;
-    using ForwardOutputs = typename BNOperatorExecutor<DType, AccReal>::ForwardOutputs;
-    using BackwardInputs = typename BNOperatorExecutor<DType, AccReal>::BackwardInputs;
-    using BackwardOutputs = typename BNOperatorExecutor<DType, AccReal>::BackwardOutputs;
     // Input
     ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardInputs::kForInData));
     ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardInputs::kForGamma));
@@ -500,9 +506,9 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
 
     if (!info_2.prop_->getParam().use_global_stats) {
       ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BackwardInputs::bwd_out_data_Gamma));
+                          BackwardInputs::bwd_out_data_Mean));
       ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BackwardInputs::bwd_out_data_Beta));
+                          BackwardInputs::bwd_out_data_Var));
       // InGrad
       ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
                           BackwardOutputs::bwd_in_grad_Data, true));
@@ -565,16 +571,15 @@ static bool isUGS(const test::op::kwargs_t& kwargs) {
  *                            __/ |                  | |
  *                           |___/                   |_|
  */
-  template<typename StreamType, typename OperatorExecutor>
-static StreamType& PRT(StreamType *os, const OperatorExecutor& obj,
-                       const typename OperatorExecutor::BlobVectorType bvt, const size_t idx) {
-  *os << OperatorExecutor::bvt2String(bvt) << ": " << idx
-      << ": ";
-  const TBlob& blob = obj.getBlobVect(bvt)[idx];
-
+template<typename StreamType, typename OperatorExecutor, typename BlobType>
+static StreamType& _DBPRT(const char *label, StreamType *os, const OperatorExecutor& obj, const BlobType type) {
+  *os << label << ": ";
+  const TBlob& blob = obj.GetBlob(type);
   test::print(RunContext(), os, blob);
   return *os;
 }
+
+#define DBPRT(__os, __obj, __type$) _DBPRT(#__type$, __os, __obj, __type$)
 
 template<typename StreamType, typename Prop, typename OperatorExecutor>
 static StreamType& dumpF(StreamType *os,
@@ -587,17 +592,16 @@ static StreamType& dumpF(StreamType *os,
       *os << "= " << x << std::endl;
       *os << "=============================" << std::endl;
     }
-//    typedef typename OperatorExecutor::BlobVectorType BlobVectorType;
-//    PRT(os, *prop.executor_, BlobVectorType::kInput, mxnet::op::batchnorm::kData);
-//    PRT(os, *prop.executor_, BlobVectorType::kInput, mxnet::op::batchnorm::kGamma);
-//    PRT(os, *prop.executor_, BlobVectorType::kInput, mxnet::op::batchnorm::kBeta);
-//
-//    PRT(os, *prop.executor_, BlobVectorType::kAux, mxnet::op::batchnorm::kMovingMean);
-//    PRT(os, *prop.executor_, BlobVectorType::kAux, mxnet::op::batchnorm::kMovingVar);
-//
-//    PRT(os, *prop.executor_, BlobVectorType::kOutput, mxnet::op::batchnorm::kOut);
-//    PRT(os, *prop.executor_, BlobVectorType::kOutput, mxnet::op::batchnorm::kMean);
-//    PRT(os, *prop.executor_, BlobVectorType::kOutput, mxnet::op::batchnorm::kVar);
+    DBPRT(os, *prop.executor_, ForwardInputs::kForInData);
+    DBPRT(os, *prop.executor_, ForwardInputs::kForGamma);
+    DBPRT(os, *prop.executor_, ForwardInputs::kForBeta);
+
+    DBPRT(os, *prop.executor_, ForwardInputs::kForMovingMean);
+    DBPRT(os, *prop.executor_, ForwardInputs::kForMovingVar);
+
+    DBPRT(os, *prop.executor_, ForwardOutputs::kForOutData);
+    DBPRT(os, *prop.executor_, ForwardOutputs::kForOutMean);
+    DBPRT(os, *prop.executor_, ForwardOutputs::kForOutVar);
   }
   return *os;
 }
@@ -615,14 +619,14 @@ static StreamType& dumpB(StreamType *os,
     }
 
 //    typedef typename OperatorExecutor::BlobVectorType BlobVectorType;
-//    PRT(os, *prop.executor_, BlobVectorType::kInGrad, mxnet::op::batchnorm::kData);
-//    PRT(os, *prop.executor_, BlobVectorType::kInGrad, mxnet::op::batchnorm::kGamma);
-//    PRT(os, *prop.executor_, BlobVectorType::kInGrad, mxnet::op::batchnorm::kBeta);
+//    DBPRT(os, *prop.executor_, BlobVectorType::kInGrad, mxnet::op::batchnorm::kData);
+//    DBPRT(os, *prop.executor_, BlobVectorType::kInGrad, mxnet::op::batchnorm::kGamma);
+//    DBPRT(os, *prop.executor_, BlobVectorType::kInGrad, mxnet::op::batchnorm::kBeta);
 //
-//    PRT(os, *prop.executor_, BlobVectorType::kAux, mxnet::op::batchnorm::kMovingMean);
-//    PRT(os, *prop.executor_, BlobVectorType::kAux, mxnet::op::batchnorm::kMovingVar);
+//    DBPRT(os, *prop.executor_, BlobVectorType::kAux, mxnet::op::batchnorm::kMovingMean);
+//    DBPRT(os, *prop.executor_, BlobVectorType::kAux, mxnet::op::batchnorm::kMovingVar);
 //
-//    PRT(os, *prop.executor_, BlobVectorType::bwd_out_grad_Grad, mxnet::op::batchnorm::kOut);
+//    DBPRT(os, *prop.executor_, BlobVectorType::bwd_out_grad_Grad, mxnet::op::batchnorm::kOut);
   }
   return *os;
 }
@@ -734,10 +738,8 @@ static test::op::OpInfoPair<OperatorProp1, OperatorProp2, OperatorExecutor> test
     // Check that everything is the same after the forward pass
     BatchNormValidator<DType, AccReal>::compare(info_1, info_2);
 
-    BatchNormValidator<DType, AccReal>::compare(
-      *info_1.executor_, *info_2.executor_,
-      OperatorExecutor::kForInData,
-      false);
+    BatchNormValidator<DType, AccReal>::compare(*info_1.executor_, *info_2.executor_,
+                                                kForInData, false);
 
     if (!thisCount) {
       // return backward
@@ -1203,9 +1205,9 @@ static void compare(const std::vector<std::vector<float>>& d1,
       const DType v2 = vec2[i];
       const bool near = BatchNormValidator<DType, AccReal>::isNear(
         v1, v2, BatchNormValidator<DType, AccReal>::ERROR_BOUND());
-      ASSERT_TRUE(near);
       if (!near) {
         LOG(WARNING) << v1 << " is not near enough to " << v2 << std::endl;
+        ASSERT_TRUE(near);
       }
     }
   }
@@ -1366,11 +1368,6 @@ static void runChannelAxisTest(
   info_c2.executor_->initForward(*info_c2.prop_, &info_c2.in_type_);
   info_c2.executor_->initBackward(*info_c2.prop_, &info_c2.in_type_);
 
-  using ForwardInputs = typename BNOperatorExecutor<DType, AccReal>::ForwardInputs;
-  using ForwardOutputs = typename BNOperatorExecutor<DType, AccReal>::ForwardOutputs;
-  using BackwardInputs = typename BNOperatorExecutor<DType, AccReal>::BackwardInputs;
-  using BackwardOutputs = typename BNOperatorExecutor<DType, AccReal>::BackwardOutputs;
-
   // Save input data to blob with new shape 1
   data_c1.save(info_c1.executor_->ctx().run_ctx,
                info_c1.executor_->GetBlob(ForwardInputs::kForInData), channelAxis1);
@@ -1406,8 +1403,12 @@ static void runChannelAxisTest(
 
     info_c1.executor_->backward(1);
     info_c2.executor_->backward(1);
+    break;  // REMOVE ME
   }
 
+  //
+  // Check forward pass
+  //
   // Transform operator 1's blob output to a normalized shape
   data_c1.load(info_c1.executor_->ctx().run_ctx,
                info_c1.executor_->GetBlob(ForwardOutputs::kForOutData), channelAxis1);
@@ -1421,6 +1422,9 @@ static void runChannelAxisTest(
   // Compare the operators' output data while they're in a normalized shape
   compare<DType, AccReal>(data_c1.channel_data_, data_c2.channel_data_);
 
+  //
+  // Check backward pass
+  //
   // Transform operator 1's input-grad blob to a normalized shape
   grad_c1.load(info_c1.executor_->ctx().run_ctx,
                info_c1.executor_->GetBlob(BackwardOutputs::bwd_in_grad_Data), channelAxis1);
@@ -1460,7 +1464,7 @@ TEST(BATCH_NORM, TestChannelAxisSimple) {
  *  backward result equivalence here implies correctness for other channel positions
  */
 TEST(BATCH_NORM, TestChannelAxis) {
-  test::ScopeSet<bool> noDebugOutput(&test::debug_output, false);
+  //test::ScopeSet<bool> noDebugOutput(&test::debug_output, false);
 
   test::op::kwargs_t kwargs;
   const std::vector<std::vector<index_t>> shapes =
@@ -1473,19 +1477,21 @@ TEST(BATCH_NORM, TestChannelAxis) {
   for (size_t x1 = 0; x1 < 2U; ++x1) {
     kwargs.push_back({"fix_gamma", tof[x1]});
     for (size_t x2 = 0; x2 < 2U; ++x2) {
-      kwargs.push_back({"use_global_stats", tof[x2]});
+      //kwargs.push_back({"use_global_stats", tof[x2]});
+      kwargs.push_back({"use_global_stats", "True"});
       for (size_t x3 = 0; x3 < 2U; ++x3) {
         kwargs.push_back({"cudnn_off", tof[x3]});
-        for (index_t g1 = 0; g1 < 2U; ++g1) {
-          for (index_t g2 = 0; g2 < 2U; ++g2) {
+        for (bool g1 : { false, true }) {
+          for (bool g2 : { false, true }) {
             for (const std::vector<index_t> &simpleShape : shapes) {
               const int dim = static_cast<int>(simpleShape.size());
               for (signed int channelAxis = -dim, shapeDim = dim;
                    channelAxis <= shapeDim;
                    ++channelAxis) {
-                for (size_t channelCount = 1; channelCount <= 3; ++channelCount) {
+                //for (size_t channelCount = 1; channelCount <= 3; ++channelCount) {
+                for (size_t channelCount = 2; channelCount <= 3; ++channelCount) {
                   // Check against base-case of channel axis position 1
-                  runChannelAxisTest(g1 != 0, g2 != 0, kwargs, simpleShape,
+                  runChannelAxisTest(g1, g2, kwargs, simpleShape,
                                      1, channelAxis, channelCount, false);
                 }
               }

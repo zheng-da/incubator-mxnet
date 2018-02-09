@@ -623,6 +623,8 @@ inline void print(const RunContext& ctx,
   }
 }
 
+//#define PRT(__lbl$, __var$) test::print(ctx.run_ctx, &(std::cout << (__lbl$) << ": "), (__var$), true)
+
 inline std::string demangle(const char *name) {
 #if defined(__GLIBCXX__) || defined(_LIBCPP_VERSION)
   int status = -4;  // some arbitrary value to eliminate the compiler warning
