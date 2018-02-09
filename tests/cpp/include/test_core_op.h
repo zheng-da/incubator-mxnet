@@ -355,19 +355,11 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
         num_inputs = static_cast<int>(bwd_node_ptr->inputs.size());
       }
 
-//      if (backward_for_op) {
-//        const int num_fwd_outputs = backward_for_op->outputs().size();
-//        num_inputs = std::max(num_fwd_outputs, num_inputs);
-//      }
-
       if (!inputs.empty()) {
         CHECK_EQ(inputs.size(), static_cast<size_t>(num_inputs));
       }
 
       int inferred_num_outputs /*, num_visible_outputs*/;
-
-//      imperative::SetNumOutputs(op_, attrs_, num_inputs, &inferred_num_outputs,
-//                                &num_visible_outputs);
 
       if (op_->get_num_outputs) {
         inferred_num_outputs = op_->get_num_outputs(attrs_);
@@ -375,26 +367,6 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
         inferred_num_outputs = op_->num_outputs;
       }
 
-//      static auto& finput_names = Op::GetAttr<nnvm::FListInputNames>("FListInputNames");
-//      if (finput_names.count(op_)) {
-//        std::vector<std::string> i_names = finput_names[op_](attrs_);
-//        const int i_name_count = i_names.size();
-//        num_inputs = std::max(i_name_count, num_inputs);
-//      }
-      //using FListInputNames = std::function<std::vector<std::string> (const NodeAttrs& attrs)>;
-
-//      static auto& grad_fun_map = Op::GetAttr<nnvm::FGradient>("FGradient");
-//      if (grad_fun_map.count(op_)) {
-//        auto grad_fun = grad_fun_map[op_];
-//        nnvm::NodePtr nodeptr = std::make_shared<nnvm::Node>();
-//        nodeptr->attrs = attrs_;
-//        std::vector<nnvm::NodeEntry> out_grads;
-//        std::vector<nnvm::NodeEntry> entries = grad_fun(nodeptr, out_grads);
-//        const int grad_count = entries.size();
-//        num_inputs = std::max(grad_count, num_inputs);
-//      }
-
-      //CHECK_GE(inferred_num_outputs, num_visible_outputs);
       // Generic, all shapes the same. Probably this will need to be adjusted for more complex
       // operators such as dot
       std::vector<nnvm::TShape> input_shapes;
@@ -439,7 +411,6 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
               CHECK(index2array.find(map_key) != index2array.end());
               const int dtype = index2array[map_key]->dtype();
               input_types[i] = dtype;
-              //std::cout << "Bwd input type " << i << ": " << dtype << std::endl << std::flush;
             }
             for (const auto &fwd_inp : backward_for_op->inputs()) {
               const int dtype = fwd_inp.data().type_flag_;
@@ -485,8 +456,6 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
               const nnvm::TShape& shp = index2array[map_key]->shape();
               input_shapes.push_back(shp);
               const nnvm::TShape ss = input_shapes[i];
-//              std::cout << "Bwd input shape " << i << ": " << shp
-//                        << " ( " << input_shapes[i] << " )" << std::endl << std::flush;
             }
             input_shapes_ = input_shapes;
             // BWD Output shapes
@@ -498,8 +467,6 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
           }
         }
         CHECK_EQ(output_shapes.size(), inferred_num_outputs);
-
-        //for (auto sh : input_shapes) { std::cout << sh << std::endl << std::flush; }
 
         for (size_t i = 0; i < static_cast<size_t>(inferred_num_outputs); ++i) {
           // If supplied and valid, pass from the supplied outputs vector
