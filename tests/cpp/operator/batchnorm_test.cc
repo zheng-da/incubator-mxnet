@@ -1521,21 +1521,23 @@ TEST(BATCH_NORM, TestChannelAxis) {
   for (size_t x1 = 0; x1 < 2U; ++x1) {
     kwargs.push_back({"fix_gamma", tof[x1]});
     for (size_t x2 = 0; x2 < 2U; ++x2) {
-      //kwargs.push_back({"use_global_stats", tof[x2]});
-      kwargs.push_back({"use_global_stats", "True"});
+      kwargs.push_back({"use_global_stats", tof[x2]});
+      //kwargs.push_back({"use_global_stats", "True"});
       for (size_t x3 = 0; x3 < 2U; ++x3) {
         kwargs.push_back({"cudnn_off", tof[x3]});
         for (bool g1 : { true }) {
         //for (bool g1 : { false, true }) {
+        //for (bool g1 : { false }) {
           //for (bool g2 : { false, true }) {
+          //for (bool g2 : { false }) {
           for (bool g2 : { true }) {
             for (const std::vector<index_t> &simpleShape : shapes) {
               const int dim = static_cast<int>(simpleShape.size());
               for (signed int channelAxis = -dim, shapeDim = dim;
                    channelAxis <= shapeDim;
                    ++channelAxis) {
-                for (size_t channelCount = 1; channelCount <= 3; ++channelCount) {
-                //for (size_t channelCount = 2; channelCount <= 3; ++channelCount) {
+                //for (size_t channelCount = 1; channelCount <= 3; ++channelCount) {
+                for (size_t channelCount = 3; channelCount <= 3; ++channelCount) {
                   // Check against base-case of channel axis position 1
                   runChannelAxisTest(g1, g2, kwargs, simpleShape,
                                      1, channelAxis, channelCount, false);
