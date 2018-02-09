@@ -72,8 +72,9 @@ static constexpr int TIMING_DW = 28;
 template <typename DType, typename AccReal>
 class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
   using Super = typename test::op::CoreOpExecutor<DType, AccReal>;
-  using Super::ctx;
  public:
+  using Super::ctx;
+
   BNOperatorExecutor(const bool isGPU, const TShape& inputShape,
                      const test::op::kwargs_t& kwargs,
                      const bool hasWeightAndBias = false)
@@ -452,26 +453,28 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
 
   /*! \brief Check batch norm output */
   template<typename BNOperatorProp>
-  static void validateForward(const BNOperatorProp& data) {
+  static void validateForward(const RunContext& run_ctx, const BNOperatorProp& data) {
     //const TBlob& outputBlob = data.output_blobs()[mxnet::op::batchnorm::kData];
     const TBlob &outputBlob = data.GetBlob(BNOperatorProp::kForOutData);
     if (test::debug_output) {
-      test::print(RunContext(), &(std::cout << "Fwd Output Blob:"), outputBlob, true, true);
+      test::print(run_ctx, &(std::cout << "Fwd Output Blob:"), outputBlob, true, true);
     }
-    switch (outputBlob.ndim()) {
-      case 3:
-        checkBatchNorm1D(&outputBlob);
-        break;
-      case 4:
-        checkBatchNorm2D(&outputBlob);
-        break;
-      case 5:
-        checkBatchNorm3D(&outputBlob);
-        break;
-      default:
-        CHECK(false) << "Supplied shape is not supported for this test";
-        break;
-    }
+    test::AccessAsCPU(outputBlob, run_ctx, [](const TBlob& blob) {
+      switch (blob.ndim()) {
+        case 3:
+          checkBatchNorm1D(&blob);
+          break;
+        case 4:
+          checkBatchNorm2D(&blob);
+          break;
+        case 5:
+          checkBatchNorm3D(&blob);
+          break;
+        default:
+          CHECK(false) << "Supplied shape is not supported for this test";
+          break;
+      }
+    });
   }
 
   /*! \brief Compare entire operator data between two test sets */
@@ -675,7 +678,8 @@ static test::op::OpInfo<OperatorProp, OperatorExecutor> TestBatchNormOperatorFor
 #if !DISABLE_VALIDATION
   if (!isUGS(kwargs)) {
     BatchNormValidator<typename OperatorExecutor::DataType,
-      typename OperatorExecutor::AccRealType>::validateForward(*info.executor_);
+      typename OperatorExecutor::AccRealType>::validateForward(
+      info.executor_->ctx().run_ctx, *info.executor_);
   }
 #endif
 

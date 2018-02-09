@@ -150,33 +150,46 @@ inline StandaloneBlob BlobOnCPU(const RunContext &rctx, const TBlob& src) {
   }
   return res;
 }
-
-struct CPUBlob {
-  std::unique_ptr<StandaloneBlob> cpu_blob_;
-  RunContext rctx_;
-  const TBlob *blob_ = nullptr;
-  const TBlob *src_;
-  CPUBlob(const RunContext &rctx, const TBlob& src) : rctx_(rctx), src_(&src) {
-    if (src.dev_mask() == cpu::kDevMask) {
-      blob_ = &src;
-    } else {
-      cpu_blob_.reset(new StandaloneBlob(BlobOnCPU(rctx, src)));
-    }
-  }
-  ~CPUBlob() {
-    if(cpu_blob_) {
-      mshadow::Stream<gpu> *stream = rctx_.get_stream<gpu>();
-      MSHADOW_TYPE_SWITCH(src_->type_flag_, DType, {
-        mshadow::Copy(cpu_blob_->FlatTo1D<gpu, DType>(stream),
-                      src_->FlatTo1D<cpu, DType>(), stream);
-      });
-    }
-  }
-  const TBlob& operator ()() const { return *blob_; }
-};
-
 #endif  // MXNET_USE_CUDA
 
+/*!
+ * \brief Access data blob as if on the CPU via a callback
+ * \tparam Type of callback Function to call with CPU-data NDArray
+ * \param src Source NDArray (on GPU or CPU)
+ * \param run_ctx Run context
+ * \param cb Callback Function to call with CPU-data NDArray
+ */
+template <typename CallbackFunction>
+static inline void AccessAsCPU(const NDArray &src,
+                               const RunContext &run_ctx,
+                               CallbackFunction cb) {
+#if MXNET_USE_CUDA
+  if (src.ctx().dev_type == Context::kCPU) {
+    cb(src);
+  } else {
+    Context cpu_ctx, gpu_ctx = src.ctx();
+    cpu_ctx.dev_type = Context::kCPU;
+    cpu_ctx.dev_id = 0;
+    NDArray on_cpu(src.shape(), cpu_ctx);
+    on_cpu.CheckAndAlloc();
+    TBlob tmp1 = on_cpu.data();
+    mxnet::ndarray::Copy<gpu, cpu>(src.data(), &tmp1, cpu_ctx, gpu_ctx, run_ctx);
+    cb(on_cpu);
+    TBlob tmp2 = src.data();
+    mxnet::ndarray::Copy<cpu, gpu>(on_cpu.data(), &tmp2, gpu_ctx, cpu_ctx, run_ctx);
+  }
+#else
+  cb(src);
+#endif
+}
+
+/*!
+ * \brief Access data blob as if on the CPU via a callback
+ * \tparam Type of callback Function to call with CPU-data NDArray
+ * \param src Source TBlob (on GPU or CPU)
+ * \param run_ctx Run context
+ * \param cb Callback Function to call with CPU-data TBlob
+ */
 template <typename CallbackFunction>
 static inline void AccessAsCPU(const TBlob& src,
                                const RunContext &run_ctx,

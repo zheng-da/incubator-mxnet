@@ -62,37 +62,6 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
   , public test::op::OperatorExecutorTiming {
   /*! \brief Performance timing categories */
   /*!
-   * \brief Access data blob as if on the CPU via a callback
-   * \tparam Type of callback Function to call with CPU-data NDArray
-   * \param src Source NDArray (on GPU or CPU)
-   * \param run_ctx Run context
-   * \param cb Callback Function to call with CPU-data NDArray
-   */
-  template <typename CallbackFunction>
-  static inline void AccessAsCPU(const NDArray &src,
-                                 const RunContext &run_ctx,
-                                 CallbackFunction cb) {
-#if MXNET_USE_CUDA
-    if (src.ctx().dev_type == Context::kCPU) {
-      cb(src);
-    } else {
-      Context cpu_ctx, gpu_ctx = src.ctx();
-      cpu_ctx.dev_type = Context::kCPU;
-      cpu_ctx.dev_id = 0;
-      NDArray on_cpu(src.shape(), cpu_ctx);
-      on_cpu.CheckAndAlloc();
-      TBlob tmp1 = on_cpu.data();
-      mxnet::ndarray::Copy<gpu, cpu>(src.data(), &tmp1, cpu_ctx, gpu_ctx, run_ctx);
-      cb(on_cpu);
-      TBlob tmp2 = src.data();
-      mxnet::ndarray::Copy<cpu, gpu>(on_cpu.data(), &tmp2, gpu_ctx, cpu_ctx, run_ctx);
-    }
-#else
-    cb(src);
-#endif
-  }
-
-  /*!
    * \brief Parse additional arguments into NodeAttrs structure
    * \param op Pointer to operator object
    * \param args vector of string pairs representing argument key/value pairs
@@ -151,8 +120,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
     CHECK_GT(shape.Size(), 0);  // Check it's a valid shape
     NDArray array(shape, run_ctx.ctx, true, dtype);
     array.CheckAndAlloc();
-    //test::op::OperatorDataInitializer<DType>::FillZero(run_ctx, array.data());
-    CHECK(false);
+    test::op::OperatorDataInitializer<DType>::FillZero(run_ctx, array.data());
     return array;
   }
 
@@ -289,6 +257,14 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
     CHECK(!isGPU);
     ctx_.run_ctx.ctx.dev_type = Context::kCPU;
 #endif
+  }
+
+  /*!
+   * \brief Get the operator context
+   * \return Reference to this operator's context object
+   */
+  const OpContext& ctx() const {
+    return ctx_;
   }
 
   static inline int default_dtype() {
@@ -710,14 +686,6 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       return true;
     }
     return false;
-  }
-
-  /*!
-   * \brief Get the operator context
-   * \return Reference to this operator's context object
-   */
-  const OpContext& ctx() const {
-    return ctx_;
   }
 
   /*!
