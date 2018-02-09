@@ -212,7 +212,7 @@ class CAccessAsCPU {
  * \param cb Callback Function to call with CPU-data NDArray
  */
 template <typename CallbackFunction>
-static inline void AccessAsCPU(const NDArray &src,
+inline void AccessAsCPU(const NDArray &src,
                                const RunContext &run_ctx,
                                CallbackFunction cb) {
 #if MXNET_USE_CUDA
@@ -243,7 +243,7 @@ static inline void AccessAsCPU(const NDArray &src,
  * \param cb Callback Function to call with CPU-data TBlob
  */
 template <typename CallbackFunction>
-static inline void AccessAsCPU(const TBlob& src,
+inline void AccessAsCPU(const TBlob& src,
                                const RunContext &run_ctx,
                                CallbackFunction cb) {
 #if MXNET_USE_CUDA
