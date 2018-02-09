@@ -72,6 +72,7 @@ static constexpr int TIMING_DW = 28;
 template <typename DType, typename AccReal>
 class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
   using Super = typename test::op::CoreOpExecutor<DType, AccReal>;
+
  public:
   using Super::ctx;
 
@@ -223,8 +224,6 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     *GetArray(bwd_in_data_Gamma) = *GetArray(kForGamma);
     *GetArray(bwd_in_data_Beta)  = *GetArray(kForBeta);
 
-    //test::print(RunContext(), &std::cout, GetArray(bwd_in_data_Data)->data());
-
     // Join aux arrays
     *GetArray(bwd_aux_states_MovingMean) = *GetArray(kForMovingMean);
     *GetArray(bwd_aux_states_MovingVar) = *GetArray(kForMovingVar);
@@ -244,8 +243,6 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Data), 0);
     test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Gamma), 1.0);
     test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Beta), 0.0);
-
-    //test::print(RunContext(), &std::cout, GetArray(bwd_in_data_Data)->data());
   }
 
   const bool hasWeightAndBias_;  // This will cause forward pass validation to fail
@@ -340,14 +337,14 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
             sum += data;
             var += data * data;
             ++itemCount;
-            if(data != 0) {
+            if (data != 0) {
               ++nonZero;
             }
           }
         }
       }
 
-      CHECK_GT(itemCount, 1U); // Not a valid check for one item
+      CHECK_GT(itemCount, 1U);  // Not a valid check for one item
       CHECK_NE(nonZero, 0);
 
       const AccReal saveSum = sum, saveVar = var;
@@ -446,7 +443,7 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
       test::print(RunContext(), &(std::cout << "Blob 2:"), b2, true, true);
     }
     const bool rc = test::op::Validator<DType, AccReal>::compare(b1, b2);
-    if(!rc) {
+    if (!rc) {
       test::print(RunContext(), &(std::cerr << "ERROR Blob 1:"), b1, true, true);
       test::print(RunContext(), &(std::cerr << "ERROR Blob 2:"), b2, true, true);
     }
@@ -456,7 +453,6 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
   /*! \brief Check batch norm output */
   template<typename BNOperatorProp>
   static void validateForward(const RunContext& run_ctx, const BNOperatorProp& data) {
-    //const TBlob& outputBlob = data.output_blobs()[mxnet::op::batchnorm::kData];
     const TBlob &outputBlob = data.GetBlob(BNOperatorProp::kForOutData);
     if (test::debug_output) {
       test::print(run_ctx, &(std::cout << "Fwd Output Blob:"), outputBlob, true, true);
@@ -793,7 +789,6 @@ testForwardAndBackward(const bool isGPU,
 
 // NOTE: This should know which version to use (V1, mkl, etc)
 struct BatchNormCoreOpProp : public mxnet::test::op::CoreOpProp {
-
   void Init(const mxnet::test::op::kwargs_t& kwargs) override {
     mxnet::test::op::CoreOpProp::Init(kwargs);
     params_.Init(kwargs, dmlc::parameter::kAllowUnknown);
@@ -866,8 +861,7 @@ TEST(BATCH_NORM, Test1DForward) {
 }
 
 TEST(BATCH_NORM, Test2DForward) {
-  //for (int type :  v2_types) {
-  for (const mshadow::TypeFlag type :  { mshadow::kFloat32 }) {
+  for (int type :  v2_types) {
     MSHADOW_REAL_TYPE_SWITCH_EX(type, DType, AccReal, {
       testBNForwardAndBackward<BNOperatorExecutor<DType, AccReal>>(
         false, {BATCH_SIZE, CHANNELS, DH, DW}, blank_kwargs);
@@ -1098,8 +1092,9 @@ class ChannelAxisTestData {
  protected:
   enum Mode { LOAD, SAVE };
 
-  void loadOrSave(const TBlob& blob, int channel_axis, const Mode mode) {
-    mxnet::op::batchnorm::BNTensor3<DType> tensor3(blob, channel_axis);
+  void loadOrSave(const RunContext& run_ctx, const TBlob& blob, int channel_axis, const Mode mode) {
+    test::CAccessAsCPU cpu_blob(run_ctx, blob, true);
+    mxnet::op::batchnorm::BNTensor3<DType> tensor3(cpu_blob(), channel_axis);
     const TShape &shape = blob.shape_;
     CHECK_GT(shape.ndim(), 0);
     if (channel_axis < 0) {
@@ -1149,14 +1144,15 @@ class ChannelAxisTestData {
     }
   }
 
-  static void print(const std::string& label, const TBlob& blob) {
+  static void print(const RunContext& run_ctx, const std::string& label, const TBlob& blob) {
     if (test::debug_output) {
       if (!label.empty()) {
         std::cout << label << ": ";
       }
+      test::CAccessAsCPU cpu_blob(run_ctx, blob, true);
       const size_t totalSize = blob.Size();
       for (size_t i = 0; i < totalSize; ++i) {
-        const float val = blob.dptr<DType>()[i];
+        const float val = cpu_blob().dptr<DType>()[i];
         if (i) {
           std::cout << ", ";
         }
@@ -1167,24 +1163,25 @@ class ChannelAxisTestData {
     }
   }
 
-  void save(const TBlob& blob, const int channel_axis) {
-    loadOrSave(blob, channel_axis, SAVE);
+  void save(const RunContext& run_ctx, const TBlob& blob, const int channel_axis) {
+    loadOrSave(run_ctx, blob, channel_axis, SAVE);
   }
 
-  void load(const TBlob& blob, const int channel_axis) {
-    loadOrSave(blob, channel_axis, LOAD);
+  void load(const RunContext& run_ctx, const TBlob& blob, const int channel_axis) {
+    loadOrSave(run_ctx, blob, channel_axis, LOAD);
   }
 };
 
 template<typename DType, typename AccReal>
-static void compare(const TBlob& blob, const std::vector<DType>& vals) {
+static void compare(const RunContext& run_ctx, const TBlob& blob, const std::vector<DType>& vals) {
   CHECK_EQ(blob.Size(), vals.size());
-  const DType *v = blob.dptr<DType>();
+  test::CAccessAsCPU cpu_blob(run_ctx, blob, false);
+  const DType *v = cpu_blob().dptr<DType>();
   for (size_t i = 0, n = vals.size(); i < n; ++i) {
     const DType vBlob = v[i];
     const DType vVect = vals[i];
     const bool near = BatchNormValidator<DType, AccReal>::isNear(
-      vBlob, vVect, BatchNormValidator<DType, AccReal>::ErrorBound(&blob));
+      vBlob, vVect, BatchNormValidator<DType, AccReal>::ErrorBound(&cpu_blob()));
     ASSERT_TRUE(near);
     if (!near) {
       LOG(WARNING) << vBlob << " is not near enough to " << vVect << std::endl;
@@ -1227,13 +1224,17 @@ static void testSaveAndLoad(const std::vector<size_t>& dims,
     shape[i] = index_t(dims[i]);
   }
 
+  RunContext cpu_run_ctx;
+  cpu_run_ctx.ctx.dev_type = Context::kCPU;
+  cpu_run_ctx.ctx.dev_id = 0;
+  cpu_run_ctx.stream = nullptr;
   std::unique_ptr<test::StandaloneBlob> blob(new test::StandaloneBlob(
     shape, false, mshadow::DataType<DType>::kFlag));
 
-  data.save(*blob, channelAxis);
-  ChannelAxisTestData<DType>::print("saved to blob", *blob);
-  compare<DType, AccReal>(*blob, expectedBlobData);
-  data.load(*blob, channelAxis);
+  data.save(cpu_run_ctx, *blob, channelAxis);
+  ChannelAxisTestData<DType>::print(cpu_run_ctx, "saved to blob", *blob);
+  compare<DType, AccReal>(cpu_run_ctx, *blob, expectedBlobData);
+  data.load(cpu_run_ctx, *blob, channelAxis);
   compare<DType, AccReal>(data.channel_data_, inputChannelData);
 }
 
@@ -1371,23 +1372,31 @@ static void runChannelAxisTest(
   using BackwardOutputs = typename BNOperatorExecutor<DType, AccReal>::BackwardOutputs;
 
   // Save input data to blob with new shape 1
-  data_c1.save(info_c1.executor_->GetBlob(ForwardInputs::kForInData), channelAxis1);
-  ChannelAxisTestData<DType>::print("blob 1 input",
+  data_c1.save(info_c1.executor_->ctx().run_ctx,
+               info_c1.executor_->GetBlob(ForwardInputs::kForInData), channelAxis1);
+  ChannelAxisTestData<DType>::print(info_c1.executor_->ctx().run_ctx,
+                                    "blob 1 input",
                                     info_c1.executor_->GetBlob(ForwardInputs::kForInData));
 
   // Save input data to blob with new shape 2
-  data_c2.save(info_c2.executor_->GetBlob(ForwardInputs::kForInData), channelAxis2);
-  ChannelAxisTestData<DType>::print("blob 2 input",
+  data_c2.save(info_c2.executor_->ctx().run_ctx,
+               info_c2.executor_->GetBlob(ForwardInputs::kForInData), channelAxis2);
+  ChannelAxisTestData<DType>::print(info_c2.executor_->ctx().run_ctx,
+                                    "blob 2 input",
                                     info_c2.executor_->GetBlob(ForwardInputs::kForInData));
 
   // Save output grad to blob with new shape 1
-  grad_c1.save(info_c1.executor_->GetBlob(BackwardInputs::bwd_out_grad_Grad), channelAxis1);
-  ChannelAxisTestData<DType>::print("blob 1 output grad",
+  grad_c1.save(info_c1.executor_->ctx().run_ctx,
+               info_c1.executor_->GetBlob(BackwardInputs::bwd_out_grad_Grad), channelAxis1);
+  ChannelAxisTestData<DType>::print(info_c1.executor_->ctx().run_ctx,
+                                    "blob 1 output grad",
                                     info_c1.executor_->GetBlob(BackwardInputs::bwd_out_grad_Grad));
 
   // Save output grad to blob with new shape 2
-  grad_c2.save(info_c2.executor_->GetBlob(BackwardInputs::bwd_out_grad_Grad), channelAxis2);
-  ChannelAxisTestData<DType>::print("blob 2 output grad",
+  grad_c2.save(info_c2.executor_->ctx().run_ctx,
+               info_c2.executor_->GetBlob(BackwardInputs::bwd_out_grad_Grad), channelAxis2);
+  ChannelAxisTestData<DType>::print(info_c2.executor_->ctx().run_ctx,
+                                    "blob 2 output grad",
                                     info_c2.executor_->GetBlob(BackwardInputs::bwd_out_grad_Grad));
 
   // Run both operators forward and backwards several times
@@ -1400,22 +1409,26 @@ static void runChannelAxisTest(
   }
 
   // Transform operator 1's blob output to a normalized shape
-  data_c1.load(info_c1.executor_->GetBlob(ForwardOutputs::kForOutData), channelAxis1);
+  data_c1.load(info_c1.executor_->ctx().run_ctx,
+               info_c1.executor_->GetBlob(ForwardOutputs::kForOutData), channelAxis1);
   ChannelAxisTestData<DType>::print("channel data 1", data_c1.channel_data_);
 
   // Transform operator 2's blob output to a normalized shape
-  data_c2.load(info_c2.executor_->GetBlob(ForwardOutputs::kForOutData), channelAxis2);
+  data_c2.load(info_c2.executor_->ctx().run_ctx,
+               info_c2.executor_->GetBlob(ForwardOutputs::kForOutData), channelAxis2);
   ChannelAxisTestData<DType>::print("channel data 2", data_c2.channel_data_);
 
   // Compare the operators' output data while they're in a normalized shape
   compare<DType, AccReal>(data_c1.channel_data_, data_c2.channel_data_);
 
   // Transform operator 1's input-grad blob to a normalized shape
-  grad_c1.load(info_c1.executor_->GetBlob(BackwardOutputs::bwd_in_grad_Data), channelAxis1);
+  grad_c1.load(info_c1.executor_->ctx().run_ctx,
+               info_c1.executor_->GetBlob(BackwardOutputs::bwd_in_grad_Data), channelAxis1);
   ChannelAxisTestData<DType>::print("input grad 1", grad_c1.channel_data_);
 
   // Transform operator 2's input-grad blob to a normalized shape
-  grad_c2.load(info_c2.executor_->GetBlob(BackwardOutputs::bwd_in_grad_Data), channelAxis2);
+  grad_c2.load(info_c2.executor_->ctx().run_ctx,
+               info_c2.executor_->GetBlob(BackwardOutputs::bwd_in_grad_Data), channelAxis2);
   ChannelAxisTestData<DType>::print("input grad 2", grad_c2.channel_data_);
 
   // Compare the operators' input grad data while they're in a normalized shape
