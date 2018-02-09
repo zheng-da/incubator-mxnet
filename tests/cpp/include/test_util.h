@@ -153,6 +153,58 @@ inline StandaloneBlob BlobOnCPU(const RunContext &rctx, const TBlob& src) {
 #endif  // MXNET_USE_CUDA
 
 /*!
+ * \brief Access a TBlob's data on the CPU within the scope of this object
+ * Overloaded () operator returns the CPU-bound TBlob
+ * RAII will copy the data back to the GPU (if it was a GPU blob)
+ */
+class CAccessAsCPU {
+ public:
+  CAccessAsCPU(const RunContext& run_ctx, const TBlob& src, bool copy_back_result = true)
+  : run_ctx_(run_ctx)
+    , src_(src)
+    , copy_back_result_(copy_back_result) {
+#if MXNET_USE_CUDA
+    if (run_ctx.ctx.dev_type == Context::kCPU) {
+      blob_ = src;
+    } else {
+      Context cpu_ctx, gpu_ctx = run_ctx.ctx;
+      cpu_ctx.dev_type = Context::kCPU;
+      cpu_ctx.dev_id = 0;
+      NDArray on_cpu(src.shape_, cpu_ctx);
+      on_cpu.CheckAndAlloc();
+      blob_ = on_cpu.data();
+      mxnet::ndarray::Copy<gpu, cpu>(src, &blob_, cpu_ctx, gpu_ctx, run_ctx);
+      on_cpu_ = on_cpu;
+    }
+#else
+    blob_ = src;
+#endif
+  }
+  ~CAccessAsCPU() {
+#if MXNET_USE_CUDA
+    if (copy_back_result_) {
+      // Copy back from GPU to CPU
+      if (run_ctx_.ctx.dev_type == Context::kGPU) {
+        Context cpu_ctx, gpu_ctx = run_ctx_.ctx;
+        cpu_ctx.dev_type = Context::kCPU;
+        cpu_ctx.dev_id = 0;
+        mxnet::ndarray::Copy<cpu, gpu>(blob_, &src_, gpu_ctx, cpu_ctx, run_ctx_);
+      }
+    }
+#endif
+  }
+  inline const TBlob& operator ()() const {
+    return blob_;
+  }
+ private:
+  const RunContext run_ctx_;
+  TBlob src_;
+  const bool copy_back_result_;
+  NDArray on_cpu_;
+  TBlob blob_;
+};
+
+/*!
  * \brief Access data blob as if on the CPU via a callback
  * \tparam Type of callback Function to call with CPU-data NDArray
  * \param src Source NDArray (on GPU or CPU)
@@ -198,16 +250,7 @@ static inline void AccessAsCPU(const TBlob& src,
   if (run_ctx.ctx.dev_type == Context::kCPU) {
     cb(src);
   } else {
-    Context cpu_ctx, gpu_ctx = run_ctx.ctx;
-    cpu_ctx.dev_type = Context::kCPU;
-    cpu_ctx.dev_id = 0;
-    NDArray on_cpu(src.shape_, cpu_ctx);
-    on_cpu.CheckAndAlloc();
-    TBlob tmp1 = on_cpu.data();
-    mxnet::ndarray::Copy<gpu, cpu>(src, &tmp1, cpu_ctx, gpu_ctx, run_ctx);
-    cb(tmp1);
-    TBlob tmp2 = src;
-    mxnet::ndarray::Copy<cpu, gpu>(on_cpu.data(), &tmp2, gpu_ctx, cpu_ctx, run_ctx);
+    cb(CAccessAsCPU(run_ctx, src, true)());
   }
 #else
   cb(src);

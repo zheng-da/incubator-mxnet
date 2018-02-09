@@ -1032,11 +1032,6 @@ MSHADOW_REAL_TYPE_SWITCH_EX(
 }
 #endif  // _WIN32
 
-#if 0
-/**
- * Backward tests (generally include forward tests as well)
- */
-
 TEST(BATCH_NORM, TestIterAll) {
   TShape shapes[] = {
     TShape({BATCH_SIZE, CHANNELS, DH}),
@@ -1080,6 +1075,8 @@ TEST(BATCH_NORM, TestIterAll) {
     kwargs.pop_back();
   }
 }
+
+#if 0
 
 TEST(BATCH_NORM, Test2DBackward2DPlusLoadAndCompareLogic) {
   test::ScopeSet<volatile bool> disableMKL(&mxnet::op::batchnorm::disable_mkl, true);
