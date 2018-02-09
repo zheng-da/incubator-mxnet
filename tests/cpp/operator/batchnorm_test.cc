@@ -1285,7 +1285,6 @@ static TShape MakeShape(const std::vector<index_t>& shape,
   return newShape;
 }
 
-#if 0
 /*! \brief Create and arrange equivalent data with different channel axes, then compare
  * normalized results */
 static void runChannelAxisTest(
@@ -1347,16 +1346,17 @@ static void runChannelAxisTest(
   // Create operator 1 with ChannelAxis2 (normally the experimental one)
   kwargs.push_back({"axis", std::to_string(channelAxis1)});
   test::op::OpInfo<BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>> info_c1 =
-    test::op::createOpAndInfoF<
-      BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>>(
-      kwargs, isGPU1, shape_c1);
+    test::op::createOpAndInfoF<BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>>(
+      BNOperatorExecutor<DType, AccReal>::ArgsWithOpName(
+        kwargs, "BatchNorm", "_backward_BatchNorm"), isGPU1, shape_c1, kwargs);
+  kwargs.pop_back();
 
   // Create operator 2 with ChannelAxis2 (normally the control one)
-  kwargs.pop_back();
   kwargs.push_back({"axis", std::to_string(channelAxis2)});
   test::op::OpInfo<BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>> info_c2 =
     test::op::createOpAndInfoF<BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>>(
-      kwargs, isGPU2, shape_c2);
+      BNOperatorExecutor<DType, AccReal>::ArgsWithOpName(
+        kwargs, "BatchNorm", "_backward_BatchNorm"), isGPU2, shape_c2, kwargs);
   kwargs.pop_back();
 
   // Init operators
@@ -1365,48 +1365,57 @@ static void runChannelAxisTest(
   info_c2.executor_->initForward(*info_c2.prop_, &info_c2.in_type_);
   info_c2.executor_->initBackward(*info_c2.prop_, &info_c2.in_type_);
 
+  using ForwardInputs = typename BNOperatorExecutor<DType, AccReal>::ForwardInputs;
+  using ForwardOutputs = typename BNOperatorExecutor<DType, AccReal>::ForwardOutputs;
+  using BackwardInputs = typename BNOperatorExecutor<DType, AccReal>::BackwardInputs;
+  using BackwardOutputs = typename BNOperatorExecutor<DType, AccReal>::BackwardOutputs;
+
   // Save input data to blob with new shape 1
-  data_c1.save(info_c1.executor_->inputs()[0], channelAxis1);
-  ChannelAxisTestData<DType>::print("blob 1 input", info_c1.executor_->inputs()[0]);
+  data_c1.save(info_c1.executor_->GetBlob(ForwardInputs::kForInData), channelAxis1);
+  ChannelAxisTestData<DType>::print("blob 1 input",
+                                    info_c1.executor_->GetBlob(ForwardInputs::kForInData));
 
   // Save input data to blob with new shape 2
-  data_c2.save(info_c2.executor_->inputs()[0], channelAxis2);
-  ChannelAxisTestData<DType>::print("blob 2 input", info_c2.executor_->inputs()[0]);
+  data_c2.save(info_c2.executor_->GetBlob(ForwardInputs::kForInData), channelAxis2);
+  ChannelAxisTestData<DType>::print("blob 2 input",
+                                    info_c2.executor_->GetBlob(ForwardInputs::kForInData));
 
   // Save output grad to blob with new shape 1
-  grad_c1.save(info_c1.executor_->bwd_inputs()[0], channelAxis1);
-  ChannelAxisTestData<DType>::print("blob 1 output grad", info_c1.executor_->bwd_inputs()[0]);
+  grad_c1.save(info_c1.executor_->GetBlob(BackwardInputs::bwd_out_grad_Grad), channelAxis1);
+  ChannelAxisTestData<DType>::print("blob 1 output grad",
+                                    info_c1.executor_->GetBlob(BackwardInputs::bwd_out_grad_Grad));
 
   // Save output grad to blob with new shape 2
-  grad_c2.save(info_c2.executor_->bwd_inputs()[0], channelAxis2);
-  ChannelAxisTestData<DType>::print("blob 2 output grad", info_c2.executor_->bwd_inputs()[0]);
+  grad_c2.save(info_c2.executor_->GetBlob(BackwardInputs::bwd_out_grad_Grad), channelAxis2);
+  ChannelAxisTestData<DType>::print("blob 2 output grad",
+                                    info_c2.executor_->GetBlob(BackwardInputs::bwd_out_grad_Grad));
 
   // Run both operators forward and backwards several times
   for (index_t x = 0; x < numberOfPasses; ++x) {
-    info_c1.executor_->forward();
-    info_c2.executor_->forward();
+    info_c1.executor_->forward(1);
+    info_c2.executor_->forward(1);
 
-    info_c1.executor_->backward();
-    info_c2.executor_->backward();
+    info_c1.executor_->backward(1);
+    info_c2.executor_->backward(1);
   }
 
   // Transform operator 1's blob output to a normalized shape
-  data_c1.load(info_c1.executor_->outputs()[0], channelAxis1);
+  data_c1.load(info_c1.executor_->GetBlob(ForwardOutputs::kForOutData), channelAxis1);
   ChannelAxisTestData<DType>::print("channel data 1", data_c1.channel_data_);
 
   // Transform operator 2's blob output to a normalized shape
-  data_c2.load(info_c2.executor_->outputs()[0], channelAxis2);
+  data_c2.load(info_c2.executor_->GetBlob(ForwardOutputs::kForOutData), channelAxis2);
   ChannelAxisTestData<DType>::print("channel data 2", data_c2.channel_data_);
 
   // Compare the operators' output data while they're in a normalized shape
   compare<DType, AccReal>(data_c1.channel_data_, data_c2.channel_data_);
 
   // Transform operator 1's input-grad blob to a normalized shape
-  grad_c1.load(info_c1.executor_->bwd_outputs()[0], channelAxis1);
+  grad_c1.load(info_c1.executor_->GetBlob(BackwardOutputs::bwd_in_grad_Data), channelAxis1);
   ChannelAxisTestData<DType>::print("input grad 1", grad_c1.channel_data_);
 
   // Transform operator 2's input-grad blob to a normalized shape
-  grad_c2.load(info_c2.executor_->bwd_outputs()[0], channelAxis2);
+  grad_c2.load(info_c2.executor_->GetBlob(BackwardOutputs::bwd_in_grad_Data), channelAxis2);
   ChannelAxisTestData<DType>::print("input grad 2", grad_c2.channel_data_);
 
   // Compare the operators' input grad data while they're in a normalized shape
@@ -1430,6 +1439,7 @@ TEST(BATCH_NORM, TestChannelAxisSimple) {
                      useSimpleData);
 }
 
+#if 0
 /*! \brief Test varying channel axis shapes
  *  For several channel counts (1-3), test that result data (after reshape) is
  *  equivalent for the default (channel position 1) and all other channel positions
