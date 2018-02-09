@@ -1506,6 +1506,7 @@ TEST(BATCH_NORM, TestChannelAxisSimple) {
  *  Channel position 1 (default) is checked everywhere else, so for and
  *  backward result equivalence here implies correctness for other channel positions
  */
+#if 0
 TEST(BATCH_NORM, TestChannelAxis) {
   //test::ScopeSet<bool> noDebugOutput(&test::debug_output, false);
 
@@ -1554,6 +1555,7 @@ TEST(BATCH_NORM, TestChannelAxis) {
     kwargs.pop_back();
   }
 }
+#endif
 
 #if MXNET_USE_CUDA
 
