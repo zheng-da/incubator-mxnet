@@ -96,11 +96,6 @@ void BatchNormForwardImpl(mshadow::Stream<cpu> *,
                           const std::vector<OpReqType> &req,
                           const std::vector<TBlob> &out_data,
                           const std::vector<TBlob> &aux_states) {
-
-//  test::print(RunContext(), &std::cout, in_data[batchnorm::kData], true);
-//  test::print(RunContext(), &std::cout, in_data[batchnorm::kGamma], true);
-//  test::print(RunContext(), &std::cout, in_data[batchnorm::kBeta], true);
-
   // Input
   batchnorm::BNTensor3<DType> inputData(in_data[batchnorm::kData], param_.axis);
   const TBlob &weights         = in_data[batchnorm::kGamma];
@@ -191,7 +186,6 @@ void BatchNormForwardImpl(mshadow::Stream<cpu> *,
                     });
       }
     }
-    //test::print(RunContext(), &std::cout, out_data[batchnorm::kOut], true);
   }
 }
 
@@ -390,7 +384,8 @@ static inline bool SupportMKLDNNBN(const NDArray &input, const BatchNormParam &p
   TShape shape = input.shape();
   return SupportMKLDNN(input) && shape.ndim() == 4
       && param.axis == mxnet::op::batchnorm::DEFAULT_AXIS
-      && shape[param.axis] % 8 == 0;
+      && shape[param.axis] % 8 == 0
+      && !mxnet::op::batchnorm::disable_mkl;
 }
 
 void BatchNormComputeExCPU(const nnvm::NodeAttrs &attrs,

@@ -64,7 +64,7 @@ static bool checkForWorkingCuda() {
       }
     }
   }
-  std::fprintf(stderr, "Warning: Could not find working CUDA driver\n");
+  std::cerr << "Warning: Could not find working CUDA driver" << std::endl;
   return false;
 }
 #else

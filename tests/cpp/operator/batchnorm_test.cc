@@ -982,8 +982,6 @@ TEST(BATCH_NORM, TestStochasticTiming_2D) {
 #endif
 }
 
-#if 0
-
 /*! \brief Performance tests */
 #ifndef _WIN32
 TEST(BATCH_NORM, TestTiming_2D) {
@@ -997,13 +995,15 @@ TEST(BATCH_NORM, TestTiming_2D) {
   }
 MSHADOW_REAL_TYPE_SWITCH_EX(
   mshadow::kFloat32, DType, AccReal, {
-#if defined(MXNET_USE_MKL2017) && (MXNET_USE_MKL2017 == 1)
+#if MXNET_USE_MKLDNN
+  // MKL
   timingTest<BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>>(
     "MKL BatchNormProp<cpu> 2D",
     false, false,
     blank_kwargs_nocudnn,
     2, THISCOUNT);
 #endif
+  // CPU
   test::ScopeSet<volatile bool> disableMKL(&mxnet::op::batchnorm::disable_mkl, true);
   timingTest<BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>>(
     "BatchNormProp<cpu> 2D",
@@ -1012,12 +1012,14 @@ MSHADOW_REAL_TYPE_SWITCH_EX(
     2, THISCOUNT);
 #if MXNET_USE_CUDA
   if (test::unitTestsWithCuda) {
+    // CUDA
     timingTest<BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>>(
       "BatchNormProp<gpu> 2D",
       true, false,
       blank_kwargs_nocudnn,
       2, THISCOUNT);
 #if MXNET_USE_CUDNN == 1 && CUDNN_MAJOR >= 5
+    // CUDA-CUDNN
     timingTest<BatchNormCoreOpProp, BNOperatorExecutor<DType, AccReal>>(
       "CUDNN BatchNormProp<gpu> 2D",
       true, false,
@@ -1030,6 +1032,7 @@ MSHADOW_REAL_TYPE_SWITCH_EX(
 }
 #endif  // _WIN32
 
+#if 0
 /**
  * Backward tests (generally include forward tests as well)
  */
