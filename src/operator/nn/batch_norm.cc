@@ -189,8 +189,8 @@ void BatchNormForwardImpl(mshadow::Stream<cpu> *,
       }
     }
   }
-  PRT("FWD runningMean", runningMean);
-  PRT("FWD runningVariance", runningVariance);
+  //PRT("FWD runningMean", runningMean);
+  //PRT("FWD runningVariance", runningVariance);
 }
 
 template <typename xpu, typename DType, typename AccReal>
@@ -206,30 +206,30 @@ void BatchNormBackwardImpl(mshadow::Stream<cpu> *,
   batchnorm::BNTensor3<DType> inputData(in_data[batchnorm::kData], param_.axis);
   const TBlob &weights   = in_data[batchnorm::kGamma];
 
-  PRT("weights", weights);
+  //PRT("weights", weights);
 
   // Input Grad
   batchnorm::BNTensor3<DType> gradIn(in_grad[batchnorm::kData], param_.axis);
   const TBlob &gradWeight = in_grad[batchnorm::kGamma];
   const TBlob &gradBias   = in_grad[batchnorm::kBeta];
 
-  PRT("gradWeight", gradWeight);
-  PRT("gradBias", gradBias);
+  //PRT("gradWeight", gradWeight);
+  //PRT("gradBias", gradBias);
 
   // Aux (Moving)
   const TBlob &runningMean = aux_states[batchnorm::kMovingMean];
   const TBlob &runningVariance = aux_states[batchnorm::kMovingVar];
 
-  PRT("runningMean", runningMean);
-  PRT("runningVariance", runningVariance);
+  //PRT("runningMean", runningMean);
+  //PRT("runningVariance", runningVariance);
 
   // Output
   batchnorm::BNTensor3<DType> gradOut(out_grad[batchnorm::kOut], param_.axis);
   const TBlob &saveMean = out_data[batchnorm::kMean];
   const TBlob &saveStd  = out_data[batchnorm::kVar];
 
-  PRT("saveMean", saveMean);
-  PRT("saveStd", saveStd);
+  //PRT("saveMean", saveMean);
+  //PRT("saveStd", saveStd);
 
   const size_t channelCount = inputData.ChannelCount();
   const size_t itemCount    = inputData.Size() / channelCount;

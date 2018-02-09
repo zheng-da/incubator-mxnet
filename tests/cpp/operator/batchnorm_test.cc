@@ -82,7 +82,7 @@ enum BackwardInputs {
 };
 enum BackwardOutputs {
   /* in_grad */     bwd_in_grad_Data /* Original input data */,
-  bwd_in_grad_Gamma, bwd_in_grad_Beta
+  /* weight, bias*/ bwd_in_grad_Gamma, bwd_in_grad_Beta
 };
 
 /**
@@ -214,9 +214,9 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     Super::resetBackward();
 
     // Join forward input and in_data array
-    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_in_data_Data));
+    //test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_in_data_Data));
     *GetArray(bwd_in_data_Data)  = *GetArray(kForInData);
-    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_in_data_Data));
+    //test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_in_data_Data));
 
     *GetArray(bwd_in_data_Gamma) = *GetArray(kForGamma);
     *GetArray(bwd_in_data_Beta)  = *GetArray(kForBeta);
@@ -234,9 +234,8 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     *GetArray(bwd_aux_states_MovingMean) = *GetArray(kForMovingMean);
     *GetArray(bwd_aux_states_MovingVar) = *GetArray(kForMovingVar);
 
-    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_aux_states_MovingMean));
-    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_aux_states_MovingVar));
-
+    //test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_aux_states_MovingMean));
+    //test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_aux_states_MovingVar));
 
     double val = -.101;
     test::patternFill(ctx().run_ctx, &GetBlob(bwd_out_data_Data), [&val]() -> double {
@@ -618,15 +617,14 @@ static StreamType& dumpB(StreamType *os,
       *os << "=============================" << std::endl;
     }
 
-//    typedef typename OperatorExecutor::BlobVectorType BlobVectorType;
-//    DBPRT(os, *prop.executor_, BlobVectorType::kInGrad, mxnet::op::batchnorm::kData);
-//    DBPRT(os, *prop.executor_, BlobVectorType::kInGrad, mxnet::op::batchnorm::kGamma);
-//    DBPRT(os, *prop.executor_, BlobVectorType::kInGrad, mxnet::op::batchnorm::kBeta);
-//
-//    DBPRT(os, *prop.executor_, BlobVectorType::kAux, mxnet::op::batchnorm::kMovingMean);
-//    DBPRT(os, *prop.executor_, BlobVectorType::kAux, mxnet::op::batchnorm::kMovingVar);
-//
-//    DBPRT(os, *prop.executor_, BlobVectorType::bwd_out_grad_Grad, mxnet::op::batchnorm::kOut);
+    DBPRT(os, *prop.executor_, BackwardOutputs::bwd_in_grad_Data);
+    DBPRT(os, *prop.executor_, BackwardOutputs::bwd_in_grad_Gamma);
+    DBPRT(os, *prop.executor_, BackwardOutputs::bwd_in_grad_Beta);
+
+    DBPRT(os, *prop.executor_, BackwardInputs::bwd_aux_states_MovingMean);
+    DBPRT(os, *prop.executor_, BackwardInputs::bwd_aux_states_MovingVar);
+
+    DBPRT(os, *prop.executor_, BackwardInputs::bwd_out_grad_Grad);
   }
   return *os;
 }
@@ -1398,11 +1396,26 @@ static void runChannelAxisTest(
 
   // Run both operators forward and backwards several times
   for (index_t x = 0; x < numberOfPasses; ++x) {
+//    dumpF(&std::cout, info_c1, 1);
+//    dumpF(&std::cout, info_c2, 2);
+//    dumpB(&std::cout, info_c2, 1);
+//    dumpB(&std::cout, info_c1, 2);
+
     info_c1.executor_->forward(1);
     info_c2.executor_->forward(1);
 
+//    dumpF(&std::cout, info_c1, 1);
+//    dumpF(&std::cout, info_c2, 2);
+//    dumpB(&std::cout, info_c2, 1);
+//    dumpB(&std::cout, info_c1, 2);
+
     info_c1.executor_->backward(1);
     info_c2.executor_->backward(1);
+
+//    dumpF(&std::cout, info_c1, 1);
+//    dumpF(&std::cout, info_c2, 2);
+//    dumpB(&std::cout, info_c2, 1);
+//    dumpB(&std::cout, info_c1, 2);
     break;  // REMOVE ME
   }
 

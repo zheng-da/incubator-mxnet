@@ -276,12 +276,6 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
                                       std::map<int, const NDArray *>& index2array) const {
     index2array.clear();
     static auto& fgradient = nnvm::Op::GetAttr<nnvm::FGradient>("FGradient");
-//    std::vector<bool>& save_inputs = *p_save_inputs;
-//    std::vector<bool>& save_outputs = *p_save_outputs;
-//    save_inputs.resize(num_inputs);
-//    save_outputs.resize(num_outputs);
-//    std::fill(save_inputs.begin(), save_inputs.end(), false);
-//    std::fill(save_outputs.begin(), save_outputs.end(), false);
 
     const uint32_t num_inputs  = inputs().size();
     const uint32_t num_outputs = outputs().size();
@@ -306,24 +300,6 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       if (!igrad_entries.empty()) {
         return igrad_entries[0].node;
       }
-
-//      for (const auto& i : igrad_entries) {
-//        if (i.node == nullptr && i.version == 0) {
-//          save_inputs[i.index] = true;
-//        } else if (i.node == node) {
-//          save_outputs[i.index] = true;
-//        }
-//      }
-//      DFSVisit(igrad_entries, [&](const nnvm::NodePtr& gnode) {
-//        if (!gnode || gnode == node) return;
-//        for (const auto& i : gnode->inputs) {
-//          if (i.node == nullptr && i.version == 0) {
-//            save_inputs[i.index] = true;
-//          } else if (i.node == node) {
-//            save_outputs[i.index] = true;
-//          }
-//        }
-//      });
     }
     return nullptr;
   }
@@ -550,16 +526,6 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       if (!backward_for_op) {
         DispatchMode dispatch_mode = DispatchMode::kUndefined;
         imperative::SetShapeType(ctx_.run_ctx.ctx, attrs_, inputs_p, outputs_p, &dispatch_mode);
-      } else {
-        // Backward op, so set based upon inputs
-        //CHECK_EQ(static_cast<size_t>(num_visible_outputs), backward_for_op->inputs().size());
-//        for (int i = 0; i < num_visible_outputs; ++i) {
-//          CHECK_LT(static_cast<size_t>(i), input_shapes.size());
-//          // backward outputs should look like forward inputs
-//          // TODO(cjolivier01): This check fails for dot product...
-//          // Need better inference of backward shapes
-//          // CHECK_EQ(backward_for_op->inputs()[i].shape(), outputs_[i].shape());
-//        }
       }
 
       std::vector<OpReqType> req;
@@ -640,6 +606,8 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
   void Execute() {
     CHECK_EQ(initialized_, true);
     CHECK_NOTNULL(function_);
+    CollectBlobs(inputs_, &blob_inputs_);
+    CollectBlobs(outputs_, &blob_outputs_);
     function_(attrs_, ctx_, blob_inputs_, req_, blob_outputs_);
   }
 
