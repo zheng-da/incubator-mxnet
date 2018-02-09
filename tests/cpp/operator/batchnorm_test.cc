@@ -179,9 +179,9 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     test::patternFill(ctx().run_ctx, &GetBlob(kForInData), [&val]() -> double { return val += 1; });
 
     MSHADOW_TYPE_SWITCH(
-      Blob(GetForwardInArray(kForGamma)).type_flag_,
+      GetBlob(kForGamma).type_flag_,
       DTypeX, {
-        const TBlob& blob = Blob(GetForwardInArray(kForGamma));
+        const TBlob& blob = GetBlob(kForGamma);
         test::fill(ctx().run_ctx, blob, DTypeX(1));
         if (hasWeightAndBias_) {
           if (blob.size(0) > 1) {
@@ -190,9 +190,9 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
         }
       });
     MSHADOW_TYPE_SWITCH(
-      Blob(GetForwardInArray(kForBeta)).type_flag_,
+      GetBlob(kForBeta).type_flag_,
       DTypeX, {
-        const TBlob& blob = Blob(GetForwardInArray(kForBeta));
+        const TBlob& blob = GetBlob(kForBeta);
         if (!hasWeightAndBias_) {
           test::fill(ctx().run_ctx, blob, DTypeX(0));
         } else {  // This will cause forward pass check to fail when calculating sum == 0
@@ -215,29 +215,53 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
 
     // Join forward input and in_data array
     //test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_in_data_Data));
-    *GetArray(bwd_in_data_Data)  = *GetArray(kForInData);
+    //*GetArray(bwd_in_data_Data)  = *GetArray(kForInData);
+    double val = 0;
+    test::patternFill(ctx().run_ctx, &GetBlob(bwd_in_data_Data), [&val]() -> double { return val += 1; });
     //test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_in_data_Data));
 
-    *GetArray(bwd_in_data_Gamma) = *GetArray(kForGamma);
-    *GetArray(bwd_in_data_Beta)  = *GetArray(kForBeta);
+    //*GetArray(bwd_in_data_Gamma) = *GetArray(kForGamma);
+    //*GetArray(bwd_in_data_Beta)  = *GetArray(kForBeta);
+
+    MSHADOW_TYPE_SWITCH(
+      GetBlob(bwd_in_data_Gamma).type_flag_,
+      DTypeX, {
+        const TBlob& blob = GetBlob(bwd_in_data_Gamma);
+        test::fill(ctx().run_ctx, blob, DTypeX(1));
+        if (hasWeightAndBias_) {
+          if (blob.size(0) > 1) {
+            blob.dptr<DTypeX>()[1] = DTypeX(3);
+          }
+        }
+      });
+    MSHADOW_TYPE_SWITCH(
+      GetBlob(bwd_in_data_Beta).type_flag_,
+      DTypeX, {
+        const TBlob& blob = GetBlob(bwd_in_data_Beta);
+        if (!hasWeightAndBias_) {
+          test::fill(ctx().run_ctx, blob, DTypeX(0));
+        } else {  // This will cause forward pass check to fail when calculating sum == 0
+          test::fill(ctx().run_ctx, blob, DTypeX(1));
+          if (blob.size(0) > 0) {
+            blob.dptr<DTypeX>()[0] = DTypeX(3);
+          }
+        }
+      });
 
     //*GetArray(bwd_out_data_Data)  = *GetArray(kForOutData);
-    *GetArray(bwd_out_data_Mean) = *GetArray(kForOutMean);
-    *GetArray(bwd_out_data_Var)  = *GetArray(kForOutVar);
-
-//    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_out_data_Mean));
-//    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_out_data_Var));
+//    *GetArray(bwd_out_data_Mean) = *GetArray(kForOutMean);
+//    *GetArray(bwd_out_data_Var)  = *GetArray(kForOutVar);
 
     // Join aux arrays
-    //test::try_fill(ctx().run_ctx, &GetBlob(bwd_aux_states_MovingMean), 0);
-    //test::try_fill(ctx().run_ctx, &GetBlob(bwd_aux_states_MovingVar), 1);
-    *GetArray(bwd_aux_states_MovingMean) = *GetArray(kForMovingMean);
-    *GetArray(bwd_aux_states_MovingVar) = *GetArray(kForMovingVar);
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_aux_states_MovingMean), 0);
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_aux_states_MovingVar), 1);
+    //*GetArray(bwd_aux_states_MovingMean) = *GetArray(kForMovingMean);
+    //*GetArray(bwd_aux_states_MovingVar) = *GetArray(kForMovingVar);
 
     //test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_aux_states_MovingMean));
     //test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_aux_states_MovingVar));
 
-    double val = -.101;
+    val = -.101;
     test::patternFill(ctx().run_ctx, &GetBlob(bwd_out_data_Data), [&val]() -> double {
       return val += 1; });
     test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_data_Mean), 1.0);
@@ -246,12 +270,14 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     val = -.001;
     test::patternFill(ctx().run_ctx, &GetBlob(bwd_out_grad_Grad), [&val]() -> double {
       return val += 1; });
+//    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_out_data_Mean));
+//    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_out_data_Var));
     test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_grad_Mean), 0.1);
     test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_grad_Var), 0.15);
 
-    test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Data), 0);
-    test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Gamma), 1.0);
-    test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Beta), 0.0);
+//    test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Data), 0.5555);
+//    test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Gamma), 1.0);
+//    test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Beta), 0.0);
   }
 
   const bool hasWeightAndBias_;  // This will cause forward pass validation to fail
@@ -499,8 +525,8 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
 
 #if MXNET_USE_CUDNN != 1 /* CUDNN takes a different approach here on first pass */
     // Aux
-    ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::::kForMovingMean));
-    ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::kForMovingVar));
+    ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::kForOutMean));
+    ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::kForOutVar));
 #endif
 
     if (!info_2.prop_->getParam().use_global_stats) {
@@ -510,12 +536,12 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
                           BackwardInputs::bwd_out_data_Var));
       // InGrad
       ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-                          BackwardOutputs::bwd_in_grad_Data, true));
-//      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-//                          BackwardOutputs::bwd_in_grad_Gamma, true));
-//      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
-//                          BackwardOutputs::bwd_in_grad_Beta));
-//      // OutGrad
+                          BackwardOutputs::bwd_in_grad_Data));
+      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
+                          BackwardOutputs::bwd_in_grad_Gamma));
+      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
+                          BackwardOutputs::bwd_in_grad_Beta));
+      // OutGrad
       ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
                           BackwardInputs::bwd_out_grad_Grad));
     }
@@ -571,14 +597,14 @@ static bool isUGS(const test::op::kwargs_t& kwargs) {
  *                           |___/                   |_|
  */
 template<typename StreamType, typename OperatorExecutor, typename BlobType>
-static StreamType& _DBPRT(const char *label, StreamType *os, const OperatorExecutor& obj, const BlobType type) {
+static StreamType& _DBPRT(const RunContext& run_ctx, const char *label,
+                          StreamType *os, const OperatorExecutor& obj, const BlobType type) {
   *os << label << ": ";
-  const TBlob& blob = obj.GetBlob(type);
-  test::print(RunContext(), os, blob);
+  test::print(RunContext(), os, test::CAccessAsCPU(run_ctx, obj.GetBlob(type), false)());
   return *os;
 }
 
-#define DBPRT(__os, __obj, __type$) _DBPRT(#__type$, __os, __obj, __type$)
+#define DBPRT(__os, __obj, __type$) _DBPRT(run_ctx, #__type$, __os, __obj, __type$)
 
 template<typename StreamType, typename Prop, typename OperatorExecutor>
 static StreamType& dumpF(StreamType *os,
@@ -591,6 +617,7 @@ static StreamType& dumpF(StreamType *os,
       *os << "= " << x << std::endl;
       *os << "=============================" << std::endl;
     }
+    const RunContext run_ctx = prop.executor_->ctx().run_ctx;
     DBPRT(os, *prop.executor_, ForwardInputs::kForInData);
     DBPRT(os, *prop.executor_, ForwardInputs::kForGamma);
     DBPRT(os, *prop.executor_, ForwardInputs::kForBeta);
@@ -617,6 +644,7 @@ static StreamType& dumpB(StreamType *os,
       *os << "=============================" << std::endl;
     }
 
+    const RunContext run_ctx = prop.executor_->ctx().run_ctx;
     DBPRT(os, *prop.executor_, BackwardOutputs::bwd_in_grad_Data);
     DBPRT(os, *prop.executor_, BackwardOutputs::bwd_in_grad_Gamma);
     DBPRT(os, *prop.executor_, BackwardOutputs::bwd_in_grad_Beta);
@@ -630,13 +658,15 @@ static StreamType& dumpB(StreamType *os,
 }
 
 template<typename StreamType, typename Prop1, typename Prop2, typename OperatorExecutor>
-static StreamType& dumpF(StreamType *os,
+static StreamType& dumpF(const RunContext& run_ctx,
+                         StreamType *os,
                          const test::op::OpInfoPair<Prop1, Prop2, OperatorExecutor>& bi) {
   return dumpF(&dumpF(os, bi.info_1_, 1), bi.info_2_, 2);
 }
 
 template<typename StreamType, typename Prop1, typename Prop2, typename OperatorExecutor>
-static StreamType& dumpB(StreamType *os,
+static StreamType& dumpB(const RunContext& run_ctx,
+                         StreamType *os,
                          const test::op::OpInfoPair<Prop1, Prop2, OperatorExecutor>& bi) {
   return dumpB(&dumpB(os, bi.info_1_, 1), bi.info_2_, 2);
 }
@@ -1045,8 +1075,8 @@ TEST(BATCH_NORM, TestIterAll) {
           kwargs.push_back({ "cudnn_off", "True" });
         }
         for (TShape shape : shapes) {
-          for (int g1 = 0; g1 < 2; ++g1) {
-            for (int g2 = 0; g2 < 2; ++g2) {
+          for (bool g1 : { false, true }) {
+            for (bool g2 : { false, true }) {
               for (int type : v2_types) {
                 MSHADOW_REAL_TYPE_SWITCH_EX(
                   type, DType, AccReal,
@@ -1056,7 +1086,7 @@ TEST(BATCH_NORM, TestIterAll) {
                       bi = testForwardAndBackward<BatchNormCoreOpProp,
                       BatchNormCoreOpProp,
                       BNOperatorExecutor<DType, AccReal>>(
-                      g1 != 0, g2 != 0, shape, kwargs);  // Keep it simple
+                      g1, g2, shape, kwargs);  // Keep it simple
                   });
               }
             }
@@ -1487,6 +1517,7 @@ TEST(BATCH_NORM, TestChannelAxis) {
      {1, 2, 3, 4}};
   const char *tof[2] = {"False", "True"};
 
+  size_t pass = 0;
   for (size_t x1 = 0; x1 < 2U; ++x1) {
     kwargs.push_back({"fix_gamma", tof[x1]});
     for (size_t x2 = 0; x2 < 2U; ++x2) {
@@ -1494,18 +1525,21 @@ TEST(BATCH_NORM, TestChannelAxis) {
       kwargs.push_back({"use_global_stats", "True"});
       for (size_t x3 = 0; x3 < 2U; ++x3) {
         kwargs.push_back({"cudnn_off", tof[x3]});
-        for (bool g1 : { false, true }) {
-          for (bool g2 : { false, true }) {
+        for (bool g1 : { true }) {
+        //for (bool g1 : { false, true }) {
+          //for (bool g2 : { false, true }) {
+          for (bool g2 : { true }) {
             for (const std::vector<index_t> &simpleShape : shapes) {
               const int dim = static_cast<int>(simpleShape.size());
               for (signed int channelAxis = -dim, shapeDim = dim;
                    channelAxis <= shapeDim;
                    ++channelAxis) {
-                //for (size_t channelCount = 1; channelCount <= 3; ++channelCount) {
-                for (size_t channelCount = 2; channelCount <= 3; ++channelCount) {
+                for (size_t channelCount = 1; channelCount <= 3; ++channelCount) {
+                //for (size_t channelCount = 2; channelCount <= 3; ++channelCount) {
                   // Check against base-case of channel axis position 1
                   runChannelAxisTest(g1, g2, kwargs, simpleShape,
                                      1, channelAxis, channelCount, false);
+                  ++pass;
                 }
               }
             }

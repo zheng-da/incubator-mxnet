@@ -134,24 +134,6 @@ class StandaloneBlob : public TBlob {
   std::shared_ptr<BlobMemory>  memory_;
 };
 
-#if MXNET_USE_CUDA
-/*! \brief Return blob in CPU memory  */
-inline StandaloneBlob BlobOnCPU(const RunContext &rctx, const TBlob& src) {
-  StandaloneBlob res(src.shape_, false, src.type_flag_);
-  if (src.dev_mask() == cpu::kDevMask) {
-    LOG(WARNING) << "BlobOnCPU(<cpu blob>) is safe, but try not to call this with a CPU blob"
-                 << " because it is inefficient";
-    memcpy(res.dptr_, src.dptr_, res.MemorySize());
-  } else {
-    mshadow::Stream<gpu> *stream = rctx.get_stream<gpu>();
-    MSHADOW_TYPE_SWITCH(src.type_flag_, DType, {
-      mshadow::Copy(res.FlatTo1D<cpu, DType>(), src.FlatTo1D<gpu, DType>(stream), stream);
-    });
-  }
-  return res;
-}
-#endif  // MXNET_USE_CUDA
-
 /*!
  * \brief Access a TBlob's data on the CPU within the scope of this object
  * Overloaded () operator returns the CPU-bound TBlob
@@ -391,7 +373,7 @@ inline StreamType& print_blob_(const RunContext& ctx,
                                const bool add_endl = true) {
 #if MXNET_USE_CUDA
   if (blob.dev_mask() == gpu::kDevMask) {
-    return print_blob_<DType>(ctx, _os, BlobOnCPU(ctx, blob), doChannels, doBatches, add_endl);
+    return print_blob_<DType>(ctx, _os, CAccessAsCPU(ctx, blob, false)(), doChannels, doBatches, add_endl);
   }
 #endif  // MXNET_USE_CUDA
 
