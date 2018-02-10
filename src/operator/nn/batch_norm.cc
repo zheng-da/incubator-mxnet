@@ -43,6 +43,10 @@ namespace mxnet {
 namespace op {
 namespace batchnorm {
 
+static bool __init_env = ([]() -> bool {
+  setenv("MXNET_MKLDNN_DEBUG", "True", true); return true;
+})();
+
 /*! \brief Global disable of batchnorm mkl operator for unit testing */
 volatile bool disable_mkl = false;
 
