@@ -1069,7 +1069,7 @@ inline std::ostream& operator << (std::ostream& os, const test::op::kwargs_t& kw
   return os;
 }
 
-#if 1
+#if 0
 TEST(BATCH_NORM, TestIterAll) {
   TShape shapes[] = {
     TShape({BATCH_SIZE, CHANNELS, DH}),

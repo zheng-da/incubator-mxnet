@@ -352,8 +352,9 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       if (op_->get_num_inputs) {
         num_inputs = op_->get_num_inputs(attrs_);
       } else if (backward_for_op) {
-        CHECK_NOTNULL(bwd_node_ptr.get());
-        num_inputs = static_cast<int>(bwd_node_ptr->inputs.size());
+        if(bwd_node_ptr) {
+          num_inputs = static_cast<int>(bwd_node_ptr->inputs.size());
+        }
       }
 
       if (!inputs.empty()) {
@@ -449,14 +450,18 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
         } else {
           if (backward_for_op) {
             // BWD Input shapes
-            input_shapes.clear();
-            CHECK_EQ(bwd_node_ptr->inputs.size(), num_inputs);
-            for (size_t i = 0; i < num_inputs; ++i) {
-              const int map_key = bwd_node_ptr->inputs[i].index;
-              CHECK(index2array.find(map_key) != index2array.end());
-              const nnvm::TShape& shp = index2array[map_key]->shape();
-              input_shapes.push_back(shp);
-              const nnvm::TShape ss = input_shapes[i];
+            if(bwd_node_ptr) {
+              input_shapes.clear();
+              CHECK_EQ(bwd_node_ptr->inputs.size(), num_inputs);
+              for (size_t i = 0; i < num_inputs; ++i) {
+                const int map_key = bwd_node_ptr->inputs[i].index;
+                CHECK(index2array.find(map_key) != index2array.end());
+                const nnvm::TShape &shp = index2array[map_key]->shape();
+                input_shapes.push_back(shp);
+                const nnvm::TShape ss = input_shapes[i];
+              }
+            } else {
+
             }
             input_shapes_ = input_shapes;
             // BWD Output shapes
