@@ -187,10 +187,9 @@ inline bool InitStorageType(const nnvm::NodeAttrs& attrs,
                                      dispatch_mode, DispatchMode::kFComputeEx);
   }
   if (!dispatched) {
-    dispatch_fallback(out_attrs, dispatch_mode);
-    LogStorageFallback(attrs, dev_mask, in_attrs, out_attrs);
+    dispatched = dispatch_fallback(out_attrs, dispatch_mode);
   }
-  return true;
+  return dispatched;
 }
 
 /*!
@@ -291,19 +290,6 @@ inline void FillDnsZerosRspImpl(mshadow::Stream<xpu> *s, NDArray *dst) {
   });
 }
 
-// Fill full indices NDArray with zeros by updating the aux shape.
-template<typename xpu>
-void PopulateFullIdxRspImpl(mshadow::Stream<xpu> *s, NDArray *dst) {
-  using namespace rowsparse;
-  CHECK_EQ(dst->storage_type(), kRowSparseStorage);
-  nnvm::dim_t nnr = dst->shape()[0];
-  dst->CheckAndAllocAuxData(kIdx, mshadow::Shape1(nnr));
-  MSHADOW_IDX_TYPE_SWITCH(dst->aux_type(kIdx), IType, {
-    IType* idx = dst->aux_data(kIdx).dptr<IType>();
-    mxnet_op::Kernel<PopulateFullIdxRspKernel, xpu>::Launch(s, nnr, idx);
-  });
-}
-
 /*!
  * \brief Fill a rsp NDArray with zeros by updating the aux shape.
  * \tparam xpu - cpu or gpu
@@ -358,7 +344,7 @@ void FillComputeZerosEx(const nnvm::NodeAttrs& attrs,
   } else if (stype == kCSRStorage) {
     FillZerosCsrImpl(s, outputs[0]);
   } else {
-    LOG(FATAL) << "Not implemented: " << operator_string(attrs, ctx, inputs, req, outputs);
+    LogUnimplementedOp(attrs, ctx, inputs, req, outputs);
   }
 }
 
