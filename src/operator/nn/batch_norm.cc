@@ -294,8 +294,6 @@ void BatchNormBackwardImpl(mshadow::Stream<cpu> *,
                       *gradIn_data = *gradOut_data * iw;
                     });
       }
-    } else {
-      CHECK(false);
     }
 
     // May want to make this a param eventually

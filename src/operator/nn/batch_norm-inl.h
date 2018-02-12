@@ -47,7 +47,8 @@ namespace mxnet {
 namespace op {
 
 namespace batchnorm {
-enum BatchNormOpInputs {kData, kGamma, kBeta, kInMovingMean, kInMovingVar};
+enum BatchNormOpInputs {kData, kGamma, kBeta, kInMovingMean,
+  kInMovingVar};  // kGamma: weights, kBeta: biases
 enum BatchNormOpOutputs {kOut, kMean, kVar};  // req, out_data
 enum BatchNormOpResource {kTempSpace};
 enum BatchNormOpAuxiliary {kMovingMean, kMovingVar};  // aux_states
@@ -257,8 +258,7 @@ void BatchNormCompute(const nnvm::NodeAttrs& attrs,
 
 template<typename xpu>
 void BatchNormGradCompute(const nnvm::NodeAttrs& attrs,
-                          const OpContext& ctx,
-                          const std::vector<TBlob>& inputs,
+                          const OpContext& ctx, const std::vector<TBlob>& inputs,
                           const std::vector<OpReqType>& req,
                           const std::vector<TBlob>& outputs) {
   CHECK_EQ(inputs.size(), 11U);
