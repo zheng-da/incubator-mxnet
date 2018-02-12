@@ -27,13 +27,9 @@
 #include "batch_norm-inl.h"
 #include <nnvm/op_attr_types.h>
 #include "../elemwise_op_common.h"
-#include "../../tests/cpp/include/test_util.h"
-
 #if MXNET_USE_MKLDNN == 1
 #include "./mkldnn/mkldnn_batch_norm-inl.h"
 #endif
-
-#define PRT(__lbl$, __var$) test::print(ctx.run_ctx, &(std::cout << (__lbl$) << ": "), (__var$), true)
 
 /*! \brief inverse standard deviation <-> variance */
 #define VARIANCE_TO_INVSTD(__var$,    __eps$)   (1.0/sqrt((__var$) + DType(__eps$)))
@@ -42,10 +38,6 @@
 namespace mxnet {
 namespace op {
 namespace batchnorm {
-
-static bool __init_env = ([]() -> bool {
-  setenv("MXNET_MKLDNN_DEBUG", "True", true); return true;
-})();
 
 /*! \brief Global disable of batchnorm mkl operator for unit testing */
 volatile bool disable_mkl = false;
@@ -111,7 +103,7 @@ void BatchNormForwardImpl(mshadow::Stream<cpu> *,
   const TBlob &runningMean     = aux_states[batchnorm::kMovingMean];
   const TBlob &runningVariance = aux_states[batchnorm::kMovingVar];
 
-  // Outputwhy would you think we dont need to?
+  // Output
   batchnorm::BNTensor3<DType> outputData(out_data[batchnorm::kOut], param_.axis);
   const TBlob &meanVector      = out_data[batchnorm::kMean];
   const TBlob &varianceVector  = out_data[batchnorm::kVar];
@@ -193,8 +185,6 @@ void BatchNormForwardImpl(mshadow::Stream<cpu> *,
       }
     }
   }
-  //PRT("FWD runningMean", runningMean);
-  //PRT("FWD runningVariance", runningVariance);
 }
 
 template <typename xpu, typename DType, typename AccReal>
@@ -210,30 +200,19 @@ void BatchNormBackwardImpl(mshadow::Stream<cpu> *,
   batchnorm::BNTensor3<DType> inputData(in_data[batchnorm::kData], param_.axis);
   const TBlob &weights   = in_data[batchnorm::kGamma];
 
-  //PRT("weights", weights);
-
   // Input Grad
   batchnorm::BNTensor3<DType> gradIn(in_grad[batchnorm::kData], param_.axis);
   const TBlob &gradWeight = in_grad[batchnorm::kGamma];
   const TBlob &gradBias   = in_grad[batchnorm::kBeta];
 
-  //PRT("gradWeight", gradWeight);
-  //PRT("gradBias", gradBias);
-
   // Aux (Moving)
   const TBlob &runningMean = aux_states[batchnorm::kMovingMean];
   const TBlob &runningVariance = aux_states[batchnorm::kMovingVar];
-
-  //PRT("runningMean", runningMean);
-  //PRT("runningVariance", runningVariance);
 
   // Output
   batchnorm::BNTensor3<DType> gradOut(out_grad[batchnorm::kOut], param_.axis);
   const TBlob &saveMean = out_data[batchnorm::kMean];
   const TBlob &saveStd  = out_data[batchnorm::kVar];
-
-  //PRT("saveMean", saveMean);
-  //PRT("saveStd", saveStd);
 
   const size_t channelCount = inputData.ChannelCount();
   const size_t itemCount    = inputData.Size() / channelCount;
@@ -315,6 +294,8 @@ void BatchNormBackwardImpl(mshadow::Stream<cpu> *,
                       *gradIn_data = *gradOut_data * iw;
                     });
       }
+    } else {
+      CHECK(false);
     }
 
     // May want to make this a param eventually
@@ -380,7 +361,7 @@ static bool BatchNormType(const nnvm::NodeAttrs& attrs,
   int dtype_param;
   MSHADOW_REAL_TYPE_SWITCH_EX(dtype, DTypeX, AccRealX, {
       dtype_param = mshadow::DataType<AccRealX>::kFlag; });
-  static const std::vector<std::string> args{"data", "gamma", "beta", "mean", "var"};
+  std::vector<std::string> args{"data", "gamma", "beta", "mean", "var"};
   CHECK_LE(in_type->size(), args.size());
   for (index_t i = 1; i < in_type->size(); ++i) {
     if ((*in_type)[i] == -1) {

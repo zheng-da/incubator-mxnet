@@ -19,11 +19,12 @@
 #ifndef TEST_CORE_OP_H_
 #define TEST_CORE_OP_H_
 
+#include <nnvm/node.h>
 #include <vector>
 #include <algorithm>
 #include <utility>
 #include <string>
-#include <nnvm/node.h>
+#include <map>
 #include "./test_op.h"
 #include "../../../src/imperative/imperative_utils.h"
 
@@ -273,8 +274,8 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
   }
 
   nnvm::NodePtr GetBackwardDependency(const nnvm::NodePtr& node,
-                                      std::map<int, const NDArray *>& index2array) const {
-    index2array.clear();
+                                      std::map<int, const NDArray *>* index2array) const {
+    index2array->clear();
     static auto& fgradient = nnvm::Op::GetAttr<nnvm::FGradient>("FGradient");
 
     const uint32_t num_inputs  = inputs().size();
@@ -284,7 +285,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
     node->inputs.reserve(num_inputs);
     for (uint32_t i = 0; i < num_inputs; ++i) {
       node->inputs.emplace_back(nnvm::NodeEntry{nullptr, i, 0});
-      index2array[i] = &inputs()[i];
+      (*index2array)[i] = &inputs()[i];
     }
 
     if (fgradient.count(node->op())) {
@@ -293,7 +294,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       for (uint32_t i = 0; i < num_outputs; ++i) {
         const uint32_t index = num_inputs + i;
         ograd_entries.emplace_back(nnvm::NodeEntry{nullptr, index, 1});
-        index2array[index] = &outputs()[i];
+        (*index2array)[index] = &outputs()[i];
       }
       const std::vector<nnvm::NodeEntry> igrad_entries = fgradient[node->op()](node, ograd_entries);
 
@@ -304,7 +305,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
     return nullptr;
   }
 
-  nnvm::NodePtr CalcBackwardPass(std::map<int, const NDArray *>& index2array) const {
+  nnvm::NodePtr CalcBackwardPass(std::map<int, const NDArray *> *index2array) const {
     nnvm::NodePtr node = nnvm::Node::Create();
     node->attrs = attrs_;
     return GetBackwardDependency(node, index2array);
@@ -341,7 +342,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       std::map<int, const NDArray *> index2array;
       nnvm::NodePtr bwd_node_ptr;
       if (backward_for_op) {
-        bwd_node_ptr = backward_for_op->CalcBackwardPass(index2array);
+        bwd_node_ptr = backward_for_op->CalcBackwardPass(&index2array);
       }
 
       // Set up forward
@@ -370,7 +371,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
       // Generic, all shapes the same. Probably this will need to be adjusted for more complex
       // operators such as dot
       std::vector<nnvm::TShape> input_shapes;
-      if(!input_shapes_.empty()) {
+      if (!input_shapes_.empty()) {
         for (size_t i = 0, n = num_inputs; i < n; ++i) {
           input_shapes.emplace_back(i < input_shapes_.size() ? input_shapes_[i]
                                                              : input_shapes_[input_shapes_.size()
@@ -403,7 +404,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
         CHECK_EQ(output_types.size(), inferred_num_outputs);
       } else {
         if (backward_for_op) {
-          if(bwd_node_ptr) {
+          if (bwd_node_ptr) {
             CHECK_EQ(bwd_node_ptr->inputs.size(), num_inputs);
             input_types.resize(bwd_node_ptr->inputs.size(), -1);
             for (size_t i = 0; i < num_inputs; ++i) {
@@ -426,7 +427,7 @@ class CoreOpExecutor : public test::op::OperatorDataInitializer<DType>
             }
           }
         } else {
-          CHECK(false); // above always true?
+          CHECK(false);  // above always true?
           for (size_t x = 0; x < num_inputs; ++x) {
             input_types.emplace_back(default_dtype());
           }

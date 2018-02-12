@@ -155,7 +155,9 @@ class CAccessAsCPU {
       NDArray on_cpu(src.shape_, cpu_ctx, false, src_.type_flag_);
       on_cpu.CheckAndAlloc();
       blob_ = on_cpu.data();
+      run_ctx.get_stream<gpu>()->Wait();
       mxnet::ndarray::Copy<gpu, cpu>(src, &blob_, cpu_ctx, gpu_ctx, run_ctx);
+      run_ctx.get_stream<gpu>()->Wait();
       on_cpu_ = on_cpu;
     }
 #else
@@ -170,7 +172,9 @@ class CAccessAsCPU {
         Context cpu_ctx, gpu_ctx = run_ctx_.ctx;
         cpu_ctx.dev_type = Context::kCPU;
         cpu_ctx.dev_id = 0;
+        run_ctx_.get_stream<gpu>()->Wait();
         mxnet::ndarray::Copy<cpu, gpu>(blob_, &src_, gpu_ctx, cpu_ctx, run_ctx_);
+        run_ctx_.get_stream<gpu>()->Wait();
       }
     }
 #endif
@@ -178,6 +182,7 @@ class CAccessAsCPU {
   inline const TBlob& operator ()() const {
     return blob_;
   }
+
  private:
   const RunContext run_ctx_;
   TBlob src_;
@@ -207,10 +212,13 @@ inline void AccessAsCPU(const NDArray &src,
     NDArray on_cpu(src.shape(), cpu_ctx, false, src.dtype());
     on_cpu.CheckAndAlloc();
     TBlob tmp1 = on_cpu.data();
+    run_ctx.get_stream<gpu>()->Wait();
     mxnet::ndarray::Copy<gpu, cpu>(src.data(), &tmp1, cpu_ctx, gpu_ctx, run_ctx);
+    run_ctx.get_stream<gpu>()->Wait();
     cb(on_cpu);
     TBlob tmp2 = src.data();
     mxnet::ndarray::Copy<cpu, gpu>(on_cpu.data(), &tmp2, gpu_ctx, cpu_ctx, run_ctx);
+    run_ctx.get_stream<gpu>()->Wait();
   }
 #else
   cb(src);
@@ -254,17 +262,10 @@ inline void fill(const RunContext &run_ctx, const TBlob& _blob, const DType val)
 
 template<typename DType>
 inline void try_fill(const RunContext &run_ctx, const TBlob *blob, const DType val) {
-  if(blob) {
+  if (blob) {
     fill(run_ctx, *blob, val);
   }
 }
-
-//template<typename DType>
-//inline void try_fill(const std::vector<TBlob>& container, size_t index, const DType value) {
-//  if (index < container.size()) {
-//    test::fill(container[index], value);
-//  }
-//}
 
 template<typename DType, typename Stream>
 inline void dump(Stream *os, const TBlob& blob, const char *suffix = "f") {
@@ -373,7 +374,8 @@ inline StreamType& print_blob_(const RunContext& ctx,
                                const bool add_endl = true) {
 #if MXNET_USE_CUDA
   if (blob.dev_mask() == gpu::kDevMask) {
-    return print_blob_<DType>(ctx, _os, CAccessAsCPU(ctx, blob, false)(), doChannels, doBatches, add_endl);
+    return print_blob_<DType>(ctx, _os, CAccessAsCPU(ctx, blob, false)(), doChannels,
+                              doBatches, add_endl);
   }
 #endif  // MXNET_USE_CUDA
 
@@ -488,8 +490,7 @@ inline StreamType& print_blob_(const RunContext& ctx,
     if (add_endl) {
       os << std::endl;
     }
-  } else
-  if (!add_endl) {
+  } else if (!add_endl) {
     os << " ";
   } else {
     os << std::endl;
@@ -604,8 +605,6 @@ inline void print(const RunContext& ctx,
     test::print(ctx, &std::cout, ss.str(), arrays[x], true, true, false);
   }
 }
-
-//#define PRT(__lbl$, __var$) test::print(ctx.run_ctx, &(std::cout << (__lbl$) << ": "), (__var$), true)
 
 inline std::string demangle(const char *name) {
 #if defined(__GLIBCXX__) || defined(_LIBCPP_VERSION)

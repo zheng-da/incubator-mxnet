@@ -28,13 +28,14 @@
 #include <mxnet/tensor_blob.h>
 #include "../../src/operator/nn/batch_norm-inl.h"
 #include "../../src/operator/batch_norm_v1-inl.h"
+#include "../../src/operator/operator_common.h"
 #include "./test_legacy_op.h"
 #include "./test_core_op.h"
 #include "executor/exec_pass.h"
 
 using namespace mxnet;
 
-#define SIMPLE_DIMENSIONS  1
+#define SIMPLE_DIMENSIONS  0
 #define DISABLE_VALIDATION 0  // If performance profiling, may do things
 // that cause validation to fail
 
@@ -58,7 +59,8 @@ static constexpr int TIMING_DEPTH = 2;
 static constexpr int TIMING_DH = 28;
 static constexpr int TIMING_DW = 28;
 
-#define PRT(__lbl$, __var$) test::print(ctx.run_ctx, &(std::cout << (__lbl$) << ": "), (__var$), true)
+#define PRT(__lbl$, __var$) \
+  test::print(ctx.run_ctx, &(std::cout << (__lbl$) << ": "), (__var$), true)
 
 /*!
  * \brief Forward
@@ -214,14 +216,10 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
     Super::resetBackward();
 
     // Join forward input and in_data array
-    //test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_in_data_Data));
-    //*GetArray(bwd_in_data_Data)  = *GetArray(kForInData);
     double val = 0;
-    test::patternFill(ctx().run_ctx, &GetBlob(bwd_in_data_Data), [&val]() -> double { return val += 1; });
-    //test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_in_data_Data));
-
-    //*GetArray(bwd_in_data_Gamma) = *GetArray(kForGamma);
-    //*GetArray(bwd_in_data_Beta)  = *GetArray(kForBeta);
+    test::patternFill(ctx().run_ctx, &GetBlob(bwd_in_data_Data), [&val]() -> double {
+      return val += 1;
+    });
 
     MSHADOW_TYPE_SWITCH(
       GetBlob(bwd_in_data_Gamma).type_flag_,
@@ -248,36 +246,21 @@ class BNOperatorExecutor : public test::op::CoreOpExecutor<DType, AccReal> {
         }
       });
 
-    //*GetArray(bwd_out_data_Data)  = *GetArray(kForOutData);
-//    *GetArray(bwd_out_data_Mean) = *GetArray(kForOutMean);
-//    *GetArray(bwd_out_data_Var)  = *GetArray(kForOutVar);
-
     // Join aux arrays
     test::try_fill(ctx().run_ctx, &GetBlob(bwd_aux_states_MovingMean), 0);
     test::try_fill(ctx().run_ctx, &GetBlob(bwd_aux_states_MovingVar), 1);
-    //*GetArray(bwd_aux_states_MovingMean) = *GetArray(kForMovingMean);
-    //*GetArray(bwd_aux_states_MovingVar) = *GetArray(kForMovingVar);
-
-    //test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_aux_states_MovingMean));
-    //test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_aux_states_MovingVar));
 
     val = -.101;
     test::patternFill(ctx().run_ctx, &GetBlob(bwd_out_data_Data), [&val]() -> double {
       return val += 1; });
-    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_data_Mean), 1.0);
-    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_data_Var), 0.0);
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_data_Mean), 0.0);
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_data_Var), 1.0);
 
     val = -.001;
     test::patternFill(ctx().run_ctx, &GetBlob(bwd_out_grad_Grad), [&val]() -> double {
-      return val += 1; });
-//    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_out_data_Mean));
-//    test::print(ctx().run_ctx, &std::cout, GetBlob(bwd_out_data_Var));
-    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_grad_Mean), 0.1);
-    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_grad_Var), 0.15);
-
-//    test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Data), 0.5555);
-//    test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Gamma), 1.0);
-//    test::try_fill(ctx().run_ctx, &GetBlob(bwd_in_grad_Beta), 0.0);
+      return val += 0.01; });
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_grad_Mean), 0.0);
+    test::try_fill(ctx().run_ctx, &GetBlob(bwd_out_grad_Var), 1.0);
   }
 
   const bool hasWeightAndBias_;  // This will cause forward pass validation to fail
@@ -474,13 +457,13 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
     const TBlob& b1 = cpu1();
     const TBlob& b2 = cpu2();
     if (print && test::debug_output) {
-      test::print(RunContext(), &(std::cout << "Blob 1:"), b1, true, true);
-      test::print(RunContext(), &(std::cout << "Blob 2:"), b2, true, true);
+      test::print(i1.ctx().run_ctx, &(std::cout << "Blob 1:"), b1, true, true);
+      test::print(i2.ctx().run_ctx, &(std::cout << "Blob 2:"), b2, true, true);
     }
     const bool rc = test::op::Validator<DType, AccReal>::compare(b1, b2);
     if (!rc) {
-      test::print(RunContext(), &(std::cerr << "ERROR Blob 1:"), b1, true, true);
-      test::print(RunContext(), &(std::cerr << "ERROR Blob 2:"), b2, true, true);
+      test::print(i1.ctx().run_ctx, &(std::cerr << "ERROR Blob 1:"), b1, true, true);
+      test::print(i2.ctx().run_ctx, &(std::cerr << "ERROR Blob 2:"), b2, true, true);
     }
     return rc;
   }
@@ -510,41 +493,54 @@ class BatchNormValidator : public test::op::Validator<DType, AccReal> {
     });
   }
 
+#define TEST_ISTRUE(__args$) \
+  do { \
+    bool _rc; \
+    EXPECT_TRUE((_rc = (__args$))); \
+    if (!_rc) { \
+      rc = false; \
+    } \
+  } while (0)
+
   /*! \brief Compare entire operator data between two test sets */
   template<typename PropType1, typename PropType2>
-  static void compare(
+  static bool compare(
     const test::op::OpInfo<PropType1, BNOperatorExecutor<DType, AccReal>>& info_1,
     const test::op::OpInfo<PropType2, BNOperatorExecutor<DType, AccReal>>& info_2) {
+    bool rc = true;
     // Input
-    ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardInputs::kForInData));
-    ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardInputs::kForGamma));
-    ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardInputs::kForBeta));
+    TEST_ISTRUE(compare(*info_1.executor_, *info_2.executor_, ForwardInputs::kForInData));
+    TEST_ISTRUE(compare(*info_1.executor_, *info_2.executor_, ForwardInputs::kForGamma));
+    TEST_ISTRUE(compare(*info_1.executor_, *info_2.executor_, ForwardInputs::kForBeta));
     // Output
-    ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::kForOutData));
+    TEST_ISTRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::kForOutData));
     CHECK_EQ(info_2.prop_->getParam().use_global_stats, info_1.prop_->getParam().use_global_stats);
 
 #if MXNET_USE_CUDNN != 1 /* CUDNN takes a different approach here on first pass */
     // Aux
-    ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::kForOutMean));
-    ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::kForOutVar));
+    TEST_ISTRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::kForOutMean));
+    TEST_ISTRUE(compare(*info_1.executor_, *info_2.executor_, ForwardOutputs::kForOutVar));
 #endif
 
     if (!info_2.prop_->getParam().use_global_stats) {
-      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
+      TEST_ISTRUE(compare(*info_1.executor_, *info_2.executor_,
                           BackwardInputs::bwd_out_data_Mean));
-      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
+      TEST_ISTRUE(compare(*info_1.executor_, *info_2.executor_,
                           BackwardInputs::bwd_out_data_Var));
       // InGrad
-      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
+      TEST_ISTRUE(compare(*info_1.executor_, *info_2.executor_,
                           BackwardOutputs::bwd_in_grad_Data));
-      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
+#if 0
+      TEST_ISTRUE(compare(*info_1.executor_, *info_2.executor_,
                           BackwardOutputs::bwd_in_grad_Gamma));
-      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
+      TEST_ISTRUE(compare(*info_1.executor_, *info_2.executor_,
                           BackwardOutputs::bwd_in_grad_Beta));
+#endif
       // OutGrad
-      ASSERT_TRUE(compare(*info_1.executor_, *info_2.executor_,
+      TEST_ISTRUE(compare(*info_1.executor_, *info_2.executor_,
                           BackwardInputs::bwd_out_grad_Grad));
     }
+    return rc;
   }
 };
 
@@ -609,8 +605,9 @@ static StreamType& _DBPRT(const RunContext& run_ctx, const char *label,
 template<typename StreamType, typename Prop, typename OperatorExecutor>
 static StreamType& dumpF(StreamType *os,
                          const test::op::OpInfo<Prop, OperatorExecutor>& prop,
-                         const size_t x = 0) {
-  if (test::debug_output) {
+                         const size_t x = 0,
+                         const bool force = test::debug_output) {
+  if (force) {
     *os << std::endl;
     if (x) {
       *os << "=============================" << std::endl;
@@ -635,8 +632,9 @@ static StreamType& dumpF(StreamType *os,
 template<typename StreamType, typename Prop, typename OperatorExecutor>
 static StreamType& dumpB(StreamType *os,
                          const test::op::OpInfo<Prop, OperatorExecutor>& prop,
-                         const size_t x = 0) {
-  if (test::debug_output) {
+                         const size_t x = 0,
+                         const bool force = test::debug_output) {
+  if (force) {
     *os << std::endl;
     if (x) {
       *os << "=============================" << std::endl;
@@ -655,20 +653,6 @@ static StreamType& dumpB(StreamType *os,
     DBPRT(os, *prop.executor_, BackwardInputs::bwd_out_grad_Grad);
   }
   return *os;
-}
-
-template<typename StreamType, typename Prop1, typename Prop2, typename OperatorExecutor>
-static StreamType& dumpF(const RunContext& run_ctx,
-                         StreamType *os,
-                         const test::op::OpInfoPair<Prop1, Prop2, OperatorExecutor>& bi) {
-  return dumpF(&dumpF(os, bi.info_1_, 1), bi.info_2_, 2);
-}
-
-template<typename StreamType, typename Prop1, typename Prop2, typename OperatorExecutor>
-static StreamType& dumpB(const RunContext& run_ctx,
-                         StreamType *os,
-                         const test::op::OpInfoPair<Prop1, Prop2, OperatorExecutor>& bi) {
-  return dumpB(&dumpB(os, bi.info_1_, 1), bi.info_2_, 2);
 }
 
 /**
@@ -764,10 +748,15 @@ static test::op::OpInfoPair<OperatorProp1, OperatorProp2, OperatorExecutor> test
     }
 
     // Check that everything is the same after the forward pass
-    BatchNormValidator<DType, AccReal>::compare(info_1, info_2);
+    const bool b1 = BatchNormValidator<DType, AccReal>::compare(info_1, info_2);
 
-    BatchNormValidator<DType, AccReal>::compare(*info_1.executor_, *info_2.executor_,
-                                                kForInData, false);
+    const bool b2 = BatchNormValidator<DType, AccReal>::compare(*info_1.executor_,
+                                                                *info_2.executor_,
+                                                                kForInData, false);
+    if (!b1 || !b2) {
+      dumpF(&std::cout, info_1, 1, true);
+      dumpF(&std::cout, info_2, 2, true);
+    }
 
     if (!thisCount) {
       // return backward
@@ -784,7 +773,12 @@ static test::op::OpInfoPair<OperatorProp1, OperatorProp2, OperatorExecutor> test
     }
 
     // Check that everything is the same after the backward pass
-    BatchNormValidator<DType, AccReal>::compare(info_1, info_2);
+    if (!BatchNormValidator<DType, AccReal>::compare(info_1, info_2)) {
+      dumpF(&std::cout, info_1, 1, true);
+      dumpF(&std::cout, info_2, 2, true);
+      dumpB(&std::cout, info_1, 1, true);
+      dumpB(&std::cout, info_2, 2, true);
+    }
   } while (++thisCount < cycleCount);
 
   return  { info_1, info_2 };
@@ -877,9 +871,11 @@ TEST(BATCH_NORM, TestSanityForwaredAndBackward) {
  *
  *
  */
-static const std::vector<mshadow::TypeFlag> v2_types = {mshadow::kFloat32,
-                                                        mshadow::kFloat64,
-                                                        mshadow::kFloat16};
+static const std::vector<mshadow::TypeFlag> v2_types = {
+  mshadow::kFloat32,
+  mshadow::kFloat64,
+  mshadow::kFloat16
+};
 
 TEST(BATCH_NORM, Test1DForward) {
   for (const mshadow::TypeFlag type :  v2_types) {
@@ -1058,12 +1054,29 @@ MSHADOW_REAL_TYPE_SWITCH_EX(
 }
 #endif  // _WIN32
 
+inline std::ostream& operator << (std::ostream& os, const test::op::kwargs_t& kwargs) {
+  if (!kwargs.empty()) {
+    os << "[";
+    size_t count = 0;
+    for (const auto &item : kwargs) {
+      if (count++) {
+        os << ", ";
+      }
+      os << item.first << "=" << item.second;
+    }
+    os << "]";
+  }
+  return os;
+}
+
+#if 1
 TEST(BATCH_NORM, TestIterAll) {
   TShape shapes[] = {
     TShape({BATCH_SIZE, CHANNELS, DH}),
     TShape({BATCH_SIZE, CHANNELS, DH, DW}),
     TShape({BATCH_SIZE, CHANNELS, DEPTH, DH, DW})
   };
+  int pass = 0;
   const char *tof[2] = { "False", "True" };
   test::op::kwargs_t kwargs;
   for (size_t x1 = 0; x1 < 2U; ++x1) {
@@ -1078,6 +1091,10 @@ TEST(BATCH_NORM, TestIterAll) {
           for (bool g1 : { false, true }) {
             for (bool g2 : { false, true }) {
               for (int type : v2_types) {
+                std::cout << shape << ", " << op::type_string(type) << ", "
+                          << kwargs << ", g1 = "
+                          << g1 << ", g2 = " << g2 << std::endl;
+                std::cout << "." << std::flush;
                 MSHADOW_REAL_TYPE_SWITCH_EX(
                   type, DType, AccReal,
                   {
@@ -1088,6 +1105,8 @@ TEST(BATCH_NORM, TestIterAll) {
                       BNOperatorExecutor<DType, AccReal>>(
                       g1, g2, shape, kwargs);  // Keep it simple
                   });
+                std::cout << std::endl;
+                ++pass;
               }
             }
           }
@@ -1101,6 +1120,7 @@ TEST(BATCH_NORM, TestIterAll) {
     kwargs.pop_back();
   }
 }
+#endif
 
 #ifndef _WIN32
 TEST(BATCH_NORM, TestBackward3D) {
@@ -1426,26 +1446,10 @@ static void runChannelAxisTest(
 
   // Run both operators forward and backwards several times
   for (index_t x = 0; x < numberOfPasses; ++x) {
-//    dumpF(&std::cout, info_c1, 1);
-//    dumpF(&std::cout, info_c2, 2);
-//    dumpB(&std::cout, info_c2, 1);
-//    dumpB(&std::cout, info_c1, 2);
-
     info_c1.executor_->forward(1);
     info_c2.executor_->forward(1);
-
-//    dumpF(&std::cout, info_c1, 1);
-//    dumpF(&std::cout, info_c2, 2);
-//    dumpB(&std::cout, info_c2, 1);
-//    dumpB(&std::cout, info_c1, 2);
-
     info_c1.executor_->backward(1);
     info_c2.executor_->backward(1);
-
-//    dumpF(&std::cout, info_c1, 1);
-//    dumpF(&std::cout, info_c2, 2);
-//    dumpB(&std::cout, info_c2, 1);
-//    dumpB(&std::cout, info_c1, 2);
     break;  // REMOVE ME
   }
 
@@ -1508,7 +1512,7 @@ TEST(BATCH_NORM, TestChannelAxisSimple) {
  */
 #if 0
 TEST(BATCH_NORM, TestChannelAxis) {
-  //test::ScopeSet<bool> noDebugOutput(&test::debug_output, false);
+  test::ScopeSet<bool> noDebugOutput(&test::debug_output, false);
 
   test::op::kwargs_t kwargs;
   const std::vector<std::vector<index_t>> shapes =
@@ -1523,22 +1527,17 @@ TEST(BATCH_NORM, TestChannelAxis) {
     kwargs.push_back({"fix_gamma", tof[x1]});
     for (size_t x2 = 0; x2 < 2U; ++x2) {
       kwargs.push_back({"use_global_stats", tof[x2]});
-      //kwargs.push_back({"use_global_stats", "True"});
       for (size_t x3 = 0; x3 < 2U; ++x3) {
         kwargs.push_back({"cudnn_off", tof[x3]});
         for (bool g1 : { true }) {
-        //for (bool g1 : { false, true }) {
-        //for (bool g1 : { false }) {
-          //for (bool g2 : { false, true }) {
-          //for (bool g2 : { false }) {
-          for (bool g2 : { true }) {
+        for (bool g1 : { false, true }) {
+          for (bool g2 : { false, true }) {
             for (const std::vector<index_t> &simpleShape : shapes) {
               const int dim = static_cast<int>(simpleShape.size());
               for (signed int channelAxis = -dim, shapeDim = dim;
                    channelAxis <= shapeDim;
                    ++channelAxis) {
-                //for (size_t channelCount = 1; channelCount <= 3; ++channelCount) {
-                for (size_t channelCount = 3; channelCount <= 3; ++channelCount) {
+                for (size_t channelCount = 1; channelCount <= 3; ++channelCount) {
                   // Check against base-case of channel axis position 1
                   runChannelAxisTest(g1, g2, kwargs, simpleShape,
                                      1, channelAxis, channelCount, false);
