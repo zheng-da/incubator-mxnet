@@ -402,7 +402,7 @@ int MXSymbolCutSubgraph(SymbolHandle sym, SymbolHandle *input_symbols,
     }
     CHECK(input_syms.size() <= max_input_size);
     *input_size = input_syms.size();
-    memcpy(input_symbols, input_syms.data(), sizeof(*input_symbols) * input_syms.size());
+    std::copy(input_syms.begin(), input_syms.end(), input_symbols);
   } else {
     *input_size = 0;
   }
