@@ -846,7 +846,9 @@ static bool BackwardWhileLoopStorageType(const nnvm::NodeAttrs& attrs,
   const WhileLoopParam& params = nnvm::get<WhileLoopParam>(attrs.parsed);
   CHECK_EQ(out_attrs->size() + 2U, (size_t) params.num_args);
   CHECK_EQ(attrs.subgraphs.size(), 2U);
-  return InferSubgraphBackwardStorage(*attrs.subgraphs[1], dev_mask, dispatch_mode, in_attrs, out_attrs);
+  CachedOp op(*attrs.subgraphs[1], {});
+  return op.BackwardStorageType(attrs, dev_mask, dispatch_mode,
+                                in_attrs, out_attrs);
 }
 
 static OpStatePtr CreateWhileLoopState(const NodeAttrs& attrs,
