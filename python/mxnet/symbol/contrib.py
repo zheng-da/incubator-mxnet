@@ -332,3 +332,142 @@ def foreach(body, data, init_states, name="foreach"):
         states = states[0]
 
     return (outs, states)
+
+def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
+    """Run a while loop with user-defined computation and loop condition.
+    TODO(Junru): doc
+    """
+
+    def _to_python_type(inputs, type, name):
+        """Converts "inputs", possibly typed mxnet NDArray, a numpy ndarray, other python types,
+        to the given type
+        """
+        if hasattr(inputs, "asscalar"):
+            inputs = inputs.asscalar()
+        try:
+            inputs = type(inputs)
+        except:
+            raise ValueError("Cannot convert %s to python %s" % (name, type.__name__))
+        return inputs
+
+    def _to_symbol_tuple(inputs, name):
+        """Converts "inputs", possibly a single mxnet Symbol, a list of mxnet Symbol,
+        a tuple of mxnet Symbol, into a tuple of Symbol
+        """
+        if isinstance(inputs, list):
+            inputs = tuple(inputs)
+        if isinstance(inputs, Symbol):
+            inputs = (inputs, )
+        if not isinstance(inputs, tuple):
+            raise ValueError("%s must be a Symbol, or a tuple or list of Symbol" % (name, ))
+        for item in inputs:
+            if not isinstance(item, Symbol):
+                raise ValueError("%s must be a Symbol, or a tuple or list of Symbol" % (name, ))
+        return inputs
+
+    def _cond_wrapper(loop_vars):
+        result = cond(*loop_vars)
+        if not isinstance(result, Symbol):
+            raise ValueError("Return of cond must be a Symbol")
+        return [], (result, )
+
+    def _func_wrapper(loop_vars):
+        """This wrapper unifies
+             "func: loop_vars -> new_loop_vars"
+         and "func: loop_vars -> (step_output, new_loop_vars)"
+        into "func: loop_vars -> (list of step_outputs, tuple of new_loop_vars)
+        """
+        result = func(*loop_vars)
+        if isinstance(result, Symbol):
+            result = (result, )
+        if isinstance(result, list):
+            result = tuple(result)
+        if not isinstance(result, tuple):
+            raise ValueError("Invalid return type of func: %s" % (type(result).__name__))
+        if len(result) == 2 and (isinstance(result[1], list) or isinstance(result[1], tuple) or len(loop_vars) == 1):
+            step_output, new_loop_vars = result
+            step_output = list(_to_symbol_tuple(step_output, "step_output"))
+        else:
+            step_output, new_loop_vars = [], result
+        new_loop_vars = _to_symbol_tuple(new_loop_vars, "new_loop_vars")
+        if len(loop_vars) != len(new_loop_vars):
+            raise ValueError("The number of loop_vars should be consistent during the loop")
+        return step_output, new_loop_vars
+
+    def _create_subgraph(graph_vars, graph_func, subgraph_name):
+        with AttrScope(subgraph_name=subgraph_name):
+            # create new variables with the same name,
+            # them feed them to the given func
+            new_graph_vars = [symbol.var(sym.name) for sym in graph_vars]
+            outputs, final_state = graph_func(new_graph_vars)
+            # first `num_out_data` elements belong to `outputs`
+            # other elements belong to `final_state`
+            num_out_data = len(outputs)
+            outputs.extend(map(symbol.op.identity, final_state))
+            num_outputs = len(outputs)
+            # group all outputs of graph_func
+            graph = symbol.Group(outputs)
+        return graph, num_out_data, num_outputs
+
+    def _union_inputs(*graphs):
+        locs = []
+        inputs = []
+        input_id_to_loc = {}
+        for graph in graphs:
+            # input_syms should be all required inputs to this subgraph
+            name_to_input_syms = {sym.name: sym for sym in _get_graph_inputs(graph)}
+            # loop_vars contains variables that can be either an input or not
+            name_to_loop_vars = {sym.name: sym for sym in loop_vars}
+            # cut_g_syms contains inputs created by cut_graph
+            name_to_cut_g_syms = {sym.list_outputs()[0]: sym for sym in _cut_subgraph(graph)}
+            import ipdb; ipdb.set_trace()
+            # collect arguments for each subgraph
+            input_locs = []
+            var_locs = []
+            for name in graph.list_inputs():
+                assert name in name_to_input_syms
+                # TODO(Junru): simplify this, loop_vars and cut_g_syms should be disjoint
+                if name in name_to_loop_vars:
+                    sym = name_to_loop_vars[name]
+                elif name in name_to_cut_g_syms:
+                    sym = name_to_cut_g_syms[name]
+                else:
+                    sym = copy.deepcopy(name_to_input_syms[name])
+                if id(sym) in input_id_to_loc:
+                    loc = input_id_to_loc[id(sym)]
+                else:
+                    loc = len(input_id_to_loc)
+                    inputs.append(sym)
+                    input_id_to_loc[id(sym)] = loc
+                input_locs.append(loc)
+                if name in name_to_loop_vars:
+                    var_locs.append(len(input_locs) - 1)
+            locs.append((input_locs, var_locs))
+        return inputs, locs
+
+    max_iterations = _to_python_type(max_iterations, int, "max_iteration")
+    loop_vars = _to_symbol_tuple(loop_vars, "loop_vars")
+    if len(loop_vars) == 0:
+        raise ValueError("loop_vars should contain at least one element")
+    # create graph for `cond'
+    cond_g, num_out_data, num_outputs = \
+        _create_subgraph(loop_vars, _cond_wrapper, name + "_cond")
+    assert num_out_data == 0
+    assert num_outputs == 1
+    # create graph for `func`
+    func_g, num_out_data, num_outputs = \
+        _create_subgraph(loop_vars, _func_wrapper, name + "_func")
+    # find symbols used in either cond_g or func_g
+    input_syms, ((cond_input_locs, cond_var_locs), (func_input_locs, func_var_locs)) = _union_inputs(cond_g, func_g)
+    result = symbol._internal._while_loop(
+        # [cond, func_g, *input_syms]
+        cond_g,
+        func_g,
+        *input_syms,
+        max_iterations=max_iterations,
+        cond_input_locs=cond_input_locs,
+        cond_var_locs=cond_var_locs,
+        func_input_locs=func_input_locs,
+        func_var_locs=func_var_locs
+    )
+    return result

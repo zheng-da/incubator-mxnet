@@ -56,6 +56,16 @@ bool InferSubgraphStorage(const nnvm::Symbol &subgraph,
                           std::vector<int> *out_attrs);
 
 /*
+ * Infer the storage types of inputs and outputs of the backward computation of
+ * an operator that contains a subgraph.
+ */
+bool InferSubgraphBackwardStorage(const nnvm::Symbol &subgraph,
+                                  const int dev_mask,
+                                  DispatchMode* dispatch_mode,
+                                  std::vector<int> *in_attrs,
+                                  std::vector<int> *out_attrs);
+
+/*
  * This contains the states for running a loop and provides methods
  * of running the subgraph computation for an iteration.
  */
@@ -69,8 +79,8 @@ class LoopState {
   // For training, each iteration has a cached op because each iteration
   // needs to maintain a set of memory buffers for all computation states,
   // which will be used in the backward.
-  CachedOpPtr iter_op;
   std::vector<OpStatePtr> all_states;
+  CachedOpPtr iter_op;
   Symbol subgraph_sym;
   nnvm::Graph subgraph;
 
@@ -90,6 +100,16 @@ class LoopState {
     all_outputs.clear();
     all_inputs.clear();
     all_states.clear();
+  }
+  static CachedOpPtr MakeSharedOp(const Symbol &sym) {
+    // We turn on static_alloc for two reasons.
+    // It avoids the overhead of unnecessary memory allocation.
+    // only static_alloc supports nested call of CachedOp.
+    std::vector<std::pair<std::string, std::string> > kwargs = {
+      {"inline_limit", "0"},
+      {"static_alloc", "1"}
+    };
+    return std::make_shared<CachedOp>(sym, kwargs);
   }
 };
 

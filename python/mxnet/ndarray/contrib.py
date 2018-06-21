@@ -192,3 +192,126 @@ def foreach(body, data, init_states):
     if not_data_list and len(outputs) == 1:
         outputs = outputs[0]
     return (outputs, states)
+
+
+def while_loop(cond, func, loop_vars, max_iterations):
+    """Run a while loop with user-defined computation and loop condition.
+
+    This operator simulates a while loop and body has the computation for an iteration
+    of the while loop. It runs the computation in body using loop variables,
+    until the loop condition is not satisfied.
+
+    ``cond'' is a user-defined loop condition function that takes ``loop_vars''
+    as input and return a boolean scalar ndarray to determine the termination of the loop.
+    The loop terminates when ``cond'' is false.
+
+    ``func'' is a user-defined loop body function that takes ``loop_vars'' as input,
+    performs computation and returns:
+    1) a list of NDArrays, which has the same number of NDArrays and the same types as ``loop_vars''
+    2) optionally outputs for each step
+    The signature of ``fun'' can be:
+       * def func(loop_vars): new_loop_vars
+    or * def func(loop_vars): (output, new_loop_vars)
+
+    ``loop_vars'' is a list of NDArrays that represent loop variables.
+
+    ``max_iterations'' is a python or NDArray scalar that defines the maximal number of iterations.
+    The maximal number of iterations is defined statically when the computation is constructed.
+
+    The computation done by this operator is equivalent to the pseudo code below
+    when the loop variables are NDArray:
+
+    # ``func'' returns only the new_loop_vars
+    steps = 0
+    while steps < max_iterations and cond(loop_vars):
+        loop_vars = func(loop_vars)
+        steps += 1
+    return loop_vars
+
+    # ``func'' returns (output, new_loop_vars)
+    steps = 0
+    outputs = []
+    while steps < max_iterations and cond(loop_vars):
+        output, loop_vars = func(loop_vars)
+        outputs.append(output)
+        steps += 1
+    return stack(outputs), loop_vars
+
+    TODO(Junru): review the documentation, it has been out-of-date.
+    Corner case #1: what if cond is always false? Do we return "outputs"?
+    """
+    def _to_python_type(inputs, type, name):
+        """Converts "inputs", possibly typed mxnet NDArray, a numpy ndarray, other python types,
+        to the given type
+        """
+        if isinstance(inputs, ndarray.NDArray):
+            inputs = inputs.asscalar()
+        try:
+            inputs = type(inputs)
+        except:
+            raise ValueError("Cannot convert %s to python %s" % (name, type.__name__))
+        return inputs
+
+    def _to_ndarray_tuple(inputs, name):
+        """Converts "inputs", possibly a single mxnet NDArray, a list of mxnet NDArray,
+        a tuple of mxnet NDArray, into a tuple of NDArray
+        """
+        if isinstance(inputs, list):
+            inputs = tuple(inputs)
+        if isinstance(inputs, ndarray.NDArray):
+            inputs = (inputs, )
+        if not isinstance(inputs, tuple):
+            raise ValueError("%s must be an NDArray, or a tuple or list of NDArrays" % (name, ))
+        for item in inputs:
+            if not isinstance(item, ndarray.NDArray):
+                raise ValueError("%s must be an NDArray, or a tuple or list of NDArrays" % (name, ))
+        return inputs
+
+    def _func_wrapper(loop_vars):
+        """This wrapper unifies
+             "func: loop_vars -> new_loop_vars"
+         and "func: loop_vars -> (step_output, new_loop_vars)"
+        into "func: loop_vars -> (None or tuple of step_outputs, tuple of new_loop_vars)
+        """
+        result = func(*loop_vars)
+        if isinstance(result, ndarray.NDArray):
+            result = (result, )
+        if isinstance(result, list):
+            result = tuple(result)
+        if not isinstance(result, tuple):
+            raise ValueError("Invalid return type of func: %s" % (type(result).__name__))
+        if len(result) == 2 and (isinstance(result[1], list) or isinstance(result[1], tuple) or len(loop_vars) == 1):
+            step_output, new_loop_vars = result
+            step_output = _to_ndarray_tuple(step_output, "step_output")
+        else:
+            step_output, new_loop_vars = None, result
+        new_loop_vars = _to_ndarray_tuple(new_loop_vars, "new_loop_vars")
+        if len(loop_vars) != len(new_loop_vars):
+            raise ValueError("The number of loop_vars should be consistent during the loop")
+        return step_output, new_loop_vars
+
+    max_iterations = _to_python_type(max_iterations, int, "max_iteration")
+    loop_vars = _to_ndarray_tuple(loop_vars, "loop_vars")
+    if len(loop_vars) == 0:
+        raise ValueError("loop_vars should contain at least one element")
+
+    steps = 0
+    outputs = None
+    while steps < max_iterations and \
+            _to_python_type(cond(*loop_vars), bool, "Return value of cond"): # loop condition
+        step_output, loop_vars = _func_wrapper(loop_vars)
+        loop_vars = _to_ndarray_tuple(loop_vars, "loop_vars produced by func")
+        if step_output is not None:
+            outputs = outputs or []
+            outputs.append(step_output)
+        steps += 1
+        if outputs is not None and len(outputs) != steps:
+            raise ValueError("Whether func produces step_output is inconsistent in the loop")
+    if len(loop_vars) == 1:
+        loop_vars,  = loop_vars
+    if outputs is not None:
+        outputs = tuple(ndarray.op.stack(*item) for item in zip(*outputs))
+        if len(outputs) == 1:
+            outputs, = outputs
+        return (outputs, loop_vars)
+    return loop_vars
