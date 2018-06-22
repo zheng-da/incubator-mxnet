@@ -420,7 +420,6 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
             name_to_loop_vars = {sym.name: sym for sym in loop_vars}
             # cut_g_syms contains inputs created by cut_graph
             name_to_cut_g_syms = {sym.list_outputs()[0]: sym for sym in _cut_subgraph(graph)}
-            import ipdb; ipdb.set_trace()
             # collect arguments for each subgraph
             input_locs = []
             var_locs = []
@@ -459,6 +458,10 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
         _create_subgraph(loop_vars, _func_wrapper, name + "_func")
     # find symbols used in either cond_g or func_g
     input_syms, ((cond_input_locs, cond_var_locs), (func_input_locs, func_var_locs)) = _union_inputs(cond_g, func_g)
+    print "cond:", hex(cond_g.handle.value), "   inputs:", cond_g.list_inputs()
+    print "func:", hex(func_g.handle.value), "   inputs:", func_g.list_inputs()
+    for i, x in enumerate(input_syms):
+        print "data", i, ":", hex(x.handle.value)
     result = symbol._internal._while_loop(
         # [cond, func_g, *input_syms]
         cond_g,
@@ -468,6 +471,8 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
         cond_input_locs=cond_input_locs,
         cond_var_locs=cond_var_locs,
         func_input_locs=func_input_locs,
-        func_var_locs=func_var_locs
+        func_var_locs=func_var_locs,
+        num_out_data=num_out_data,
+        num_outputs=num_outputs
     )
     return result

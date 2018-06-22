@@ -485,6 +485,10 @@ struct WhileLoopParam : public dmlc::Parameter<WhileLoopParam> {
   int num_outputs;
   int num_out_data;
   int max_iterations;
+  // `cond' and `func' each takes a subset of while_loop's inputs as that to their subgraphs
+  // `cond_input_locs' contains indices of inputs fed to `cond', and
+  // `func_input_locs' contains indices of inputs fed to `func'.
+  // `cond_var_locs' and `func_var_locs' are indices in which input variables are stored. 
   nnvm::Tuple<dim_t> cond_input_locs;
   nnvm::Tuple<dim_t> cond_var_locs;
   nnvm::Tuple<dim_t> func_input_locs;
@@ -499,7 +503,13 @@ struct WhileLoopParam : public dmlc::Parameter<WhileLoopParam> {
     DMLC_DECLARE_FIELD(max_iterations).set_lower_bound(1)
     .describe("Maximum number of iterations.");
     DMLC_DECLARE_FIELD(cond_input_locs)
-    .describe("The locations of loop variables among the inputs.");
+    .describe("The locations of cond's inputs in the given inputs.");
+    DMLC_DECLARE_FIELD(cond_var_locs)
+    .describe("The locations of loop_vars among cond's inputs.");
+    DMLC_DECLARE_FIELD(func_input_locs)
+    .describe("The locations of func's inputs in the given inputs.");
+    DMLC_DECLARE_FIELD(func_var_locs)
+    .describe("The locations of loop_vars among func's inputs.");
   }
 };  // struct WhileLoopParam
 
@@ -552,7 +562,7 @@ static void WhileLoopComputeExCPU(const OpStatePtr& state_ptr,
   for (size_t i = 0; i < (size_t) params.num_out_data; i++)
     CHECK_EQ(params.max_iterations, outputs[i].shape()[0]);
   for (const auto &arr : outputs)
-    CHECK_EQ(arr.storage_type(), kDefaultStorage) << "The for operator doesn't support the sparse format";
+    CHECK_EQ(arr.storage_type(), kDefaultStorage) << "The while_loop operator doesn't support the sparse format";
   // construct inputs and outputs for cond
   std::vector<NDArray> cond_inputs, cond_outputs = {NDArray()};
   WhileLoopState::extract_by_loc(inputs, params.cond_input_locs, &cond_inputs);
@@ -637,7 +647,7 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
     CHECK_NE(x, kWriteInplace);
   }
   for (auto x: outputs) {
-    CHECK_EQ(x.storage_type(), kDefaultStorage);
+    CHECK_EQ(x.storage_type(), kDefaultStorage) << "The while_loop operator doesn't support the sparse format";
   }
   for (size_t i = 1; i < params.func_var_locs.ndim(); ++i) {
     CHECK_LT(params.func_var_locs[i - 1], params.func_var_locs[i]);
@@ -708,9 +718,12 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
 static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
                            std::vector<TShape> *in_shape,
                            std::vector<TShape> *out_shape) {
+  LOG(INFO) << "InferShape starts";
   using nnvm::ShapeVector;
   const WhileLoopParam& params = nnvm::get<WhileLoopParam>(attrs.parsed);
   // sanity checks
+  LOG(INFO) << attrs.subgraphs[0];
+  LOG(INFO) << attrs.subgraphs[1];
   CHECK_EQ(in_shape->size() + 2U, (size_t) params.num_args);
   CHECK_EQ(out_shape->size(), (size_t) params.num_outputs);
   CHECK_EQ(attrs.subgraphs.size(), 2U);
@@ -753,10 +766,6 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
     // copy done, call InferShape
     g.attrs["shape"] = std::make_shared<dmlc::any>(std::move(shapes));
     g = exec::InferShape(std::move(g));
-    if (g.GetAttr<size_t>("shape_num_unknown_nodes") != 0) {
-      // infer shape on subgraph failed;
-      return false;
-    }
     // now `shapes' won't be used anymore, use new_shapes instead
     const auto& new_shapes = g.GetAttr<ShapeVector>("shape");
     // copy subg_in back to in_shape
@@ -783,17 +792,16 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
       auto eid = idx.entry_id(g.outputs[i]);
       SHAPE_ASSIGN_CHECK(*out_shape, i, new_shapes[eid]);
     }
-    return true;
+    return g.GetAttr<size_t>("shape_num_unknown_nodes") == 0;
   };
   ShapeVector cond_out_shape{TShape(1U)}; // this means: [(1, )]
   ShapeVector func_out_shape(params.num_outputs);
-  if (!infer_subg(attrs.subgraphs[0], &cond_out_shape, params.cond_input_locs, 0, false)) {
-    return false;
-  }
-  if (!infer_subg(attrs.subgraphs[1], &func_out_shape, params.func_input_locs, params.num_out_data, true)) {
-    return false;
-  }
-  return true;
+  bool shape_complete = true;
+  shape_complete = shape_complete && infer_subg(attrs.subgraphs[0], &cond_out_shape, params.cond_input_locs, 0, false));
+  shape_complete = shape_complete && infer_subg(attrs.subgraphs[1], &func_out_shape, params.func_input_locs, params.num_out_data, true));
+  LOG(INFO) << "InferShape ends";
+  // TODO(Junru): confirm
+  return shape_complete;
 }
 
 static bool WhileLoopType(const nnvm::NodeAttrs& attrs,
@@ -948,7 +956,7 @@ NNVM_REGISTER_OP(_while_loop)
   names.push_back("cond");
   names.push_back("func");
   for (int i = 2; i < params.num_args; i++)
-    names.push_back("data" + std::to_string(i));
+    names.push_back("data" + std::to_string(i - 2));
   return names;
 })
 .set_attr<nnvm::FInputGraph>("FInputGraph",
@@ -964,7 +972,7 @@ NNVM_REGISTER_OP(_while_loop)
   return ExecType::kSubgraphExec;
 })
 .set_attr<FStatefulComputeEx>("FStatefulComputeEx<gpu>", WhileLoopComputeExCPU)
-.set_attr<std::string>("key_var_num_args", "num_inputs")
+.set_attr<std::string>("key_var_num_args", "num_args")
 .add_argument("cond", "Symbol", "Input graph for the loop condition.")
 .add_argument("func", "Symbol", "Input graph for the loop body.")
 .add_argument("data", "NDArray-or-Symbol[]",
