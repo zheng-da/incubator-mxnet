@@ -490,7 +490,6 @@ struct WhileLoopParam : public dmlc::Parameter<WhileLoopParam> {
   // `func_input_locs' contains indices of inputs fed to `func'.
   // `func_var_locs' are indices in which input "variables" are stored in func's inputs.
   nnvm::Tuple<dim_t> cond_input_locs;
-  nnvm::Tuple<dim_t> cond_var_locs; // TODO(Junru): this is unused, remove
   nnvm::Tuple<dim_t> func_input_locs;
   nnvm::Tuple<dim_t> func_var_locs;
   DMLC_DECLARE_PARAMETER(WhileLoopParam) {
@@ -504,8 +503,6 @@ struct WhileLoopParam : public dmlc::Parameter<WhileLoopParam> {
     .describe("Maximum number of iterations.");
     DMLC_DECLARE_FIELD(cond_input_locs)
     .describe("The locations of cond's inputs in the given inputs.");
-    DMLC_DECLARE_FIELD(cond_var_locs)
-    .describe("The locations of loop_vars among cond's inputs.");
     DMLC_DECLARE_FIELD(func_input_locs)
     .describe("The locations of func's inputs in the given inputs.");
     DMLC_DECLARE_FIELD(func_var_locs)

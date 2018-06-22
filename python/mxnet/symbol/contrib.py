@@ -458,7 +458,7 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
     func_g, num_out_data, num_outputs = \
         _create_subgraph(loop_vars, _func_wrapper, name + "_func")
     # find symbols used in either cond_g or func_g
-    input_syms, ((cond_input_locs, cond_var_locs), (func_input_locs, func_var_locs)) = _union_inputs(cond_g, func_g)
+    input_syms, ((cond_input_locs, _), (func_input_locs, func_var_locs)) = _union_inputs(cond_g, func_g)
     result = symbol._internal._while_loop(
         # [cond, func_g, *input_syms]
         cond_g,
@@ -466,7 +466,6 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
         *input_syms,
         max_iterations=max_iterations,
         cond_input_locs=cond_input_locs,
-        cond_var_locs=cond_var_locs,
         func_input_locs=func_input_locs,
         func_var_locs=func_var_locs,
         num_out_data=num_out_data,
