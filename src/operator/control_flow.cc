@@ -763,12 +763,9 @@ void _ps(const std::vector<TShape> &shapes) {
 static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
                            std::vector<TShape> *in_shape,
                            std::vector<TShape> *out_shape) {
-  LOG(INFO) << "InferShape starts";
   using nnvm::ShapeVector;
   const WhileLoopParam& params = nnvm::get<WhileLoopParam>(attrs.parsed);
   // sanity checks
-  LOG(INFO) << attrs.subgraphs[0];
-  LOG(INFO) << attrs.subgraphs[1];
   CHECK_EQ(in_shape->size() + 2U, (size_t) params.num_args);
   CHECK_EQ(out_shape->size(), (size_t) params.num_outputs);
   CHECK_EQ(attrs.subgraphs.size(), 2U);
