@@ -825,11 +825,11 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
   };
   ShapeVector cond_out_shape{TShape(1U)}; // this means: [(1, )]
   ShapeVector func_out_shape(params.num_outputs);
-  bool shape_complete = true;
-  shape_complete = shape_complete && infer_subg(attrs.subgraphs[0], &cond_out_shape, params.cond_input_locs, 0, false);
-  shape_complete = shape_complete && infer_subg(attrs.subgraphs[1], &func_out_shape, params.func_input_locs, params.num_out_data, true);
-  // TODO(Junru): confirm
-  return shape_complete;
+  bool success[] = {
+    infer_subg(attrs.subgraphs[0], &cond_out_shape, params.cond_input_locs, 0, false),
+    infer_subg(attrs.subgraphs[1], &func_out_shape, params.func_input_locs, params.num_out_data, true)
+  };
+  return success[0] && success[1];
 }
 
 static bool WhileLoopType(const nnvm::NodeAttrs& attrs,
@@ -844,11 +844,11 @@ static bool WhileLoopType(const nnvm::NodeAttrs& attrs,
   WhileLoopState::extract_by_loc(*in_type, params.cond_input_locs, &cond_in_type);
   WhileLoopState::extract_by_loc(*in_type, params.func_input_locs, &func_in_type);
   std::vector<int> cond_out_type = {0};
-  if (!InferSubgraphDataType(*attrs.subgraphs[0], &cond_in_type, &cond_out_type))
-    return false;
-  if (!InferSubgraphDataType(*attrs.subgraphs[1], &func_in_type, out_type))
-    return false;
-  return true;
+  bool success[] = {
+    InferSubgraphDataType(*attrs.subgraphs[0], &cond_in_type, &cond_out_type),
+    InferSubgraphDataType(*attrs.subgraphs[1], &func_in_type, out_type)
+  };
+  return success[0] && success[1];
 }
 
 static bool WhileLoopStorageType(const nnvm::NodeAttrs& attrs,
@@ -865,12 +865,15 @@ static bool WhileLoopStorageType(const nnvm::NodeAttrs& attrs,
   std::vector<int> func_in_attrs;
   WhileLoopState::extract_by_loc(*in_attrs, params.cond_input_locs, &cond_in_attrs);
   WhileLoopState::extract_by_loc(*in_attrs, params.func_input_locs, &func_in_attrs);
-  std::vector<int> cond_out_attrs = {0};
-  if (!InferSubgraphStorage(*attrs.subgraphs[0], dev_mask, dispatch_mode, &cond_in_attrs, &cond_out_attrs))
-    return false;
-  if (!InferSubgraphStorage(*attrs.subgraphs[1], dev_mask, dispatch_mode, &func_in_attrs, out_attrs))
-    return false;
-  return true;
+  std::vector<int> cond_out_attrs = {kDefaultStorage};
+  DispatchMode cond_mode = DispatchMode::kUndefined;
+  DispatchMode func_mode = DispatchMode::kUndefined;
+  *dispatch_mode = DispatchMode::kFComputeEx;
+  bool success[] = {
+    InferSubgraphStorage(*attrs.subgraphs[0], dev_mask, &cond_mode, &cond_in_attrs, &cond_out_attrs),
+    InferSubgraphStorage(*attrs.subgraphs[1], dev_mask, &func_mode, &func_in_attrs, out_attrs)
+  };
+  return success[0] && success[1];
 }
 
 static bool BackwardWhileLoopStorageType(const nnvm::NodeAttrs& attrs,

@@ -403,7 +403,8 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
             # first `num_out_data` elements belong to `outputs`
             # other elements belong to `final_state`
             num_out_data = len(outputs)
-            outputs.extend(map(symbol.op.identity, final_state))
+            outputs = list(map(symbol.op.identity, outputs))  \
+                    + list(map(symbol.op.identity, final_state))
             num_outputs = len(outputs)
             # group all outputs of graph_func
             graph = symbol.Group(outputs)
@@ -443,7 +444,7 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
                     var_locs.append(len(input_locs) - 1)
             locs.append((input_locs, var_locs))
         return inputs, locs
-
+   
     max_iterations = _to_python_type(max_iterations, int, "max_iteration")
     loop_vars = _to_symbol_tuple(loop_vars, "loop_vars")
     if len(loop_vars) == 0:
