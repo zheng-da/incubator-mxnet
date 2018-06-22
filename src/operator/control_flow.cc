@@ -488,9 +488,9 @@ struct WhileLoopParam : public dmlc::Parameter<WhileLoopParam> {
   // `cond' and `func' each takes a subset of while_loop's inputs as that to their subgraphs
   // `cond_input_locs' contains indices of inputs fed to `cond', and
   // `func_input_locs' contains indices of inputs fed to `func'.
-  // `cond_var_locs' and `func_var_locs' are indices in which input variables are stored. 
+  // `func_var_locs' are indices in which input "variables" are stored in func's inputs.
   nnvm::Tuple<dim_t> cond_input_locs;
-  nnvm::Tuple<dim_t> cond_var_locs;
+  nnvm::Tuple<dim_t> cond_var_locs; // TODO(Junru): this is unused, remove
   nnvm::Tuple<dim_t> func_input_locs;
   nnvm::Tuple<dim_t> func_var_locs;
   DMLC_DECLARE_PARAMETER(WhileLoopParam) {
@@ -521,8 +521,29 @@ class WhileLoopState: public LoopState {
   Symbol cond;          // symbol of the `cond' subgraph
   size_t n_iterations;  // the actual number of steps taken in this while loop, <= max_iterations
   CachedOpPtr cond_op;
+  // abbrev for output_input_mapping
+  // indicates to which index the output of `func' will be copied to the input of `cond'
+  std::vector<int> oi_map;
 
-  WhileLoopState(const WhileLoopParam &params, const Symbol &cond, const Symbol &func) : LoopState(func), params(params), cond(cond), n_iterations(0U), cond_op(LoopState::MakeSharedOp(cond)) {
+  WhileLoopState(const WhileLoopParam &params, const Symbol &cond, const Symbol &func) :
+                 LoopState(func),
+                 params(params),
+                 cond(cond),
+                 n_iterations(0U),
+                 cond_op(LoopState::MakeSharedOp(cond)),
+                 oi_map(params.func_var_locs.ndim(), -1) {
+    const nnvm::Tuple<dim_t> &func_input_locs = params.func_input_locs;
+    const nnvm::Tuple<dim_t> &func_var_locs = params.func_var_locs;
+    const nnvm::Tuple<dim_t> &cond_input_locs = params.cond_input_locs;
+    for (size_t i = 0; i < func_var_locs.ndim(); ++i) {
+      dim_t pos_i = func_input_locs[func_var_locs[i]];
+      for (size_t j = 0; j < cond_input_locs.ndim(); ++j) {
+        dim_t pos_j = cond_input_locs[j];
+        if (pos_i == pos_j) {
+          this->oi_map[i] = j;
+        }
+      }
+    }
   }
   template <typename T>
   static void extract_by_loc(const std::vector<T> &array,
@@ -535,6 +556,31 @@ class WhileLoopState: public LoopState {
     }
   }
 };
+
+template <typename T>
+T _asscalar(const NDArray &a) {
+  CHECK_EQ(a.shape().Size(), 1U);
+  T data;
+  a.SyncCopyToCPU(&data, 1U);
+  return data;
+}
+
+bool as_bool_scalar(const NDArray &a) {
+  bool result;
+  MSHADOW_TYPE_SWITCH(a.dtype(), DType, {
+    DType typed_result = _asscalar<DType>(a);
+    result = bool(typed_result);
+  });
+  return result;
+}
+
+// TODO(Junru): delete it
+void print_scalar(const NDArray &a) {
+  MSHADOW_TYPE_SWITCH(a.dtype(), DType, {
+    DType typed_result = _asscalar<DType>(a);
+    std::cout << a.dtype() << " " << typed_result << std::endl;
+  });
+}
 
 static void WhileLoopComputeExCPU(const OpStatePtr& state_ptr,
                                   const OpContext& ctx,
@@ -569,32 +615,12 @@ static void WhileLoopComputeExCPU(const OpStatePtr& state_ptr,
   std::vector<NDArray*> cond_input_ptr, cond_output_ptr;
   to_ptr_vec(cond_inputs, &cond_input_ptr);
   to_ptr_vec(cond_outputs, &cond_output_ptr);
-  // a helper function to check is cond is satisfied
-  const auto check_cond = [&cond_input_ptr, &cond_output_ptr, &state]() {
-    // RAII storage
-    struct CPUStorage {
-      uint8_t *data;
-      size_t size;
-      CPUStorage(size_t size): data(new uint8_t[size]), size(size) {
-      }
-      ~CPUStorage() {
-        delete[] data;
-      }
-    };
-    // TODO(Junru): should I reset cond_output_ptr everytime? should I turn off sometime like is_recording?
-    // how to handle the storage?
-    // the SyncCopyToCPU here might be problematic
-    state.cond_op->Forward(nullptr, cond_input_ptr, cond_output_ptr);
-    NDArray *scalar = cond_output_ptr[0];
-    CPUStorage storage(scalar->shape().Size());
-    scalar->SyncCopyToCPU(storage.data, storage.size);
-    return (bool) storage.data[0];
-  };
   // construct inputs and outputs for func
   std::vector<NDArray> func_inputs, func_outputs(outputs.size());
   WhileLoopState::extract_by_loc(inputs, params.func_input_locs, &func_inputs);
   for (size_t &step = state.n_iterations = 0; step < (size_t) params.max_iterations; ++step) {
-    if (!check_cond()) {
+    state.cond_op->Forward(nullptr, cond_input_ptr, cond_output_ptr);
+    if (!as_bool_scalar(*cond_output_ptr[0])) {
       break;
     }
     // we create func_outputs for the current step:
@@ -614,6 +640,12 @@ static void WhileLoopComputeExCPU(const OpStatePtr& state_ptr,
       size_t j = i - params.num_out_data;
       CHECK_EQ(func_inputs[j].shape(), func_outputs[i].shape());
       func_inputs[j] = func_outputs[i];
+      int k = state.oi_map[j];
+      if (k != -1) {
+        // I actually don't need to update cond_inputs
+        cond_inputs[k] = func_outputs[i];
+        cond_input_ptr[k] = &func_outputs[i];
+      }
     }
   }
   // copy output data to `outputs'
@@ -797,8 +829,8 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
   ShapeVector cond_out_shape{TShape(1U)}; // this means: [(1, )]
   ShapeVector func_out_shape(params.num_outputs);
   bool shape_complete = true;
-  shape_complete = shape_complete && infer_subg(attrs.subgraphs[0], &cond_out_shape, params.cond_input_locs, 0, false));
-  shape_complete = shape_complete && infer_subg(attrs.subgraphs[1], &func_out_shape, params.func_input_locs, params.num_out_data, true));
+  shape_complete = shape_complete && infer_subg(attrs.subgraphs[0], &cond_out_shape, params.cond_input_locs, 0, false);
+  shape_complete = shape_complete && infer_subg(attrs.subgraphs[1], &func_out_shape, params.func_input_locs, params.num_out_data, true);
   LOG(INFO) << "InferShape ends";
   // TODO(Junru): confirm
   return shape_complete;
