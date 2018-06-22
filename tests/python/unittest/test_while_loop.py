@@ -96,7 +96,7 @@ def test_simple_add():
         mx.nd.array([1], dtype="int64"), # i
         mx.nd.array([0], dtype="int64"), # s
     )
-    assert all(outputs.asnumpy() == np.arange(1, 101).reshape(100, 1))
+    assert all(outputs.asnumpy()[ : 100] == np.arange(1, 101).reshape(100, 1))
     assert result_i.asscalar() == 101
     assert result_s.asscalar() == 5050
     # Case 2.2: result should be sum([1, 2, 3 ... 1000])
