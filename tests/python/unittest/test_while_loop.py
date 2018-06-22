@@ -92,13 +92,13 @@ def test_simple_add():
         max_iterations=1000,
     )
     model.hybridize()
-    outputs, result = model(
+    outputs, result_i, result_s = model(
         mx.nd.array([1], dtype="int64"), # i
         mx.nd.array([0], dtype="int64"), # s
     )
     assert all(outputs.asnumpy() == np.arange(1, 101).reshape(100, 1))
-    assert result[0].asscalar() == 101
-    assert result[1].asscalar() == 5050
+    assert result_i.asscalar() == 101
+    assert result_s.asscalar() == 5050
     # Case 2.2: result should be sum([1, 2, 3 ... 1000])
     model = _TestBlock(
         cond=lambda i, s, true: true,
@@ -106,14 +106,14 @@ def test_simple_add():
         max_iterations=1000,
     )
     model.hybridize()
-    outputs, result = model(
+    outputs, result_i, result_s, _ = model(
         mx.nd.array([1], dtype="int64"), # i
         mx.nd.array([0], dtype="int64"), # s
         mx.nd.array([1], dtype="int64"), # s
     )
     assert all(outputs.asnumpy() == np.arange(1, 1001).reshape(1000, 1))
-    assert result[0].asscalar() == 1001
-    assert result[1].asscalar() == 500500
+    assert result_i.asscalar() == 1001
+    assert result_s.asscalar() == 500500
     # Case 2.3: very corner case
     # TODO(Junru, Da): in this case, the current implementation returns only loop_vars,
     # which causes inconsistency between symbolic and imperative mode.
