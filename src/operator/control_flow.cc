@@ -563,12 +563,11 @@ T _asscalar(const NDArray &a) {
 }
 
 bool as_bool_scalar(const NDArray &a) {
-  bool result;
   MSHADOW_TYPE_SWITCH(a.dtype(), DType, {
-    DType typed_result = _asscalar<DType>(a);
-    result = bool(typed_result);
+    return bool(_asscalar<DType>(a));
   });
-  return result;
+  CHECK(false) << "Unknown dtype";
+  return false;
 }
 
 // TODO(Junru): delete it
