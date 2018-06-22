@@ -750,12 +750,9 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
 static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
                            std::vector<TShape> *in_shape,
                            std::vector<TShape> *out_shape) {
-  LOG(INFO) << "InferShape starts";
   using nnvm::ShapeVector;
   const WhileLoopParam& params = nnvm::get<WhileLoopParam>(attrs.parsed);
   // sanity checks
-  LOG(INFO) << attrs.subgraphs[0];
-  LOG(INFO) << attrs.subgraphs[1];
   CHECK_EQ(in_shape->size() + 2U, (size_t) params.num_args);
   CHECK_EQ(out_shape->size(), (size_t) params.num_outputs);
   CHECK_EQ(attrs.subgraphs.size(), 2U);
@@ -831,7 +828,6 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
   bool shape_complete = true;
   shape_complete = shape_complete && infer_subg(attrs.subgraphs[0], &cond_out_shape, params.cond_input_locs, 0, false);
   shape_complete = shape_complete && infer_subg(attrs.subgraphs[1], &func_out_shape, params.func_input_locs, params.num_out_data, true);
-  LOG(INFO) << "InferShape ends";
   // TODO(Junru): confirm
   return shape_complete;
 }

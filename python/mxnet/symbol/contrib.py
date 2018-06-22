@@ -458,10 +458,6 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
         _create_subgraph(loop_vars, _func_wrapper, name + "_func")
     # find symbols used in either cond_g or func_g
     input_syms, ((cond_input_locs, cond_var_locs), (func_input_locs, func_var_locs)) = _union_inputs(cond_g, func_g)
-    print "cond:", hex(cond_g.handle.value), "   inputs:", cond_g.list_inputs()
-    print "func:", hex(func_g.handle.value), "   inputs:", func_g.list_inputs()
-    for i, x in enumerate(input_syms):
-        print "data", i, ":", hex(x.handle.value)
     result = symbol._internal._while_loop(
         # [cond, func_g, *input_syms]
         cond_g,
