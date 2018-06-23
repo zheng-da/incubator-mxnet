@@ -194,53 +194,64 @@ def foreach(body, data, init_states):
     return (outputs, states)
 
 
-def while_loop(cond, func, loop_vars, max_iterations):
+def while_loop(loop_vars, cond, func, max_iterations):
     """Run a while loop with user-defined computation and loop condition.
 
-    This operator simulates a while loop and body has the computation for an iteration
-    of the while loop. It runs the computation in body using loop variables,
-    until the loop condition is not satisfied.
+    This operator simulates a while loop which iterately does customized computation
+    as long as the condition is satisfied.
 
-    ``cond'' is a user-defined loop condition function that takes ``loop_vars''
-    as input and return a boolean scalar ndarray to determine the termination of the loop.
-    The loop terminates when ``cond'' is false.
+    `loop_vars` is a list of NDArrays on which the computation uses.
 
-    ``func'' is a user-defined loop body function that takes ``loop_vars'' as input,
-    performs computation and returns:
-    1) a list of NDArrays, which has the same number of NDArrays and the same types as ``loop_vars''
-    2) optionally outputs for each step
-    The signature of ``fun'' can be:
-       * def func(loop_vars): new_loop_vars
-    or * def func(loop_vars): (output, new_loop_vars)
+    `cond` is a user-defined function as the loop condition.
+    It consumes `loop_vars`, and produces a scalar MXNet NDArray,
+    indicating the termination of the loop.
+    The loop ends when `cond` returns false (zero).
+    The `cond` is variadic, and its signature should be
+    `cond(*loop_vars) => NDArray`.
 
-    ``loop_vars'' is a list of NDArrays that represent loop variables.
+    `func` is a user-defined function as the loop body.
+    It also consumes `loop_vars`, and produces `step_output` and `new_loop_vars` at each step.
+    The number of elements, shape, dtype of each element in `step_output` should be consistent.
+    The `new_loop_vars` should be consistent with `loop_vars` on each step.
+    The `func` is variadic, and its signature should be
+    `cond(*loop_vars) => (List[NDArray] step_output, List[NDArray] new_loop_vars)`.
 
-    ``max_iterations'' is a python or NDArray scalar that defines the maximal number of iterations.
-    The maximal number of iterations is defined statically when the computation is constructed.
+    `max_iterations` is a scalar that defines the maximum number of iterations allowed.
 
-    The computation done by this operator is equivalent to the pseudo code below
-    when the loop variables are NDArray:
+    This function returns a list of NDArrays of length `|step_output| + |loop_vars|`.
+    The i-th element in the first `|step_output|` ones of the list represent
+    the i-th `step_output` at all step, stacked along axis 0.
+    The i-th element in the last `|loop_vars|` ones of the list
+    represent the final state of each loop variable.
 
-    # ``func'' returns only the new_loop_vars
-    steps = 0
-    while steps < max_iterations and cond(loop_vars):
-        loop_vars = func(loop_vars)
-        steps += 1
-    return loop_vars
+    Warning: when `cond` is never satisfied, we assume `step_output` is empty.
 
-    # ``func'' returns (output, new_loop_vars)
-    steps = 0
-    outputs = []
-    while steps < max_iterations and cond(loop_vars):
-        output, loop_vars = func(loop_vars)
-        outputs.append(output)
-        steps += 1
-    return stack(outputs), loop_vars
+    Parameters
+    ----------
+    loop_vars: list of NDArrays.
+        The initial values of the loop variables.
+    cond: a Python function.
+        The loop condition.
+    func: a Python function.
+        The loop body.
+    max_iteration: a python int.
+        Maximum number of iterations.
 
-    TODO(Junru): review the documentation, it has been out-of-date.
-    Corner case #1: what if cond is always false? Do we return "outputs"?
+    Returns
+    -------
+    outputs: a list of NDArrays of length `|step_output| + |loop_vars|`.
+        The first `|step_output|` NDArrays are outputs.
+        The last `|loop_vars|` NDArrays are the final state of loop variables.
+
+    Examples
+    --------
+    TODO(Junru): run this
+    >>> cond = lambda i, s: i <= 5
+    >>> func = lambda i, s: (i + 1, s + i)
+    >>> loop_vars = (mx.nd.array([1], dtype="int64"), mx.nd.array([0], dtype="int64"))
+    >>> outputs = mx.nd.contrib.while_loop(loop_vars, cond, func, max_iterations=10)
     """
-    def _to_python_type(inputs, type, name):
+    def _to_python_scalar(inputs, type, name):
         """Converts "inputs", possibly typed mxnet NDArray, a numpy ndarray, other python types,
         to the given type
         """
@@ -273,32 +284,24 @@ def while_loop(cond, func, loop_vars, max_iterations):
          and "func: loop_vars -> (step_output, new_loop_vars)"
         into "func: loop_vars -> (None or tuple of step_outputs, tuple of new_loop_vars)
         """
-        result = func(*loop_vars)
-        if isinstance(result, ndarray.NDArray):
-            result = (result, )
-        if isinstance(result, list):
-            result = tuple(result)
-        if not isinstance(result, tuple):
-            raise ValueError("Invalid return type of func: %s" % (type(result).__name__))
-        if len(result) == 2 and (isinstance(result[1], list) or isinstance(result[1], tuple) or len(loop_vars) == 1):
-            step_output, new_loop_vars = result
-            step_output = _to_ndarray_tuple(step_output, "step_output")
-        else:
-            step_output, new_loop_vars = None, result
+        step_output, new_loop_vars = func(*loop_vars)
+        step_output = _to_ndarray_tuple(step_output, "step_output")
         new_loop_vars = _to_ndarray_tuple(new_loop_vars, "new_loop_vars")
         if len(loop_vars) != len(new_loop_vars):
-            raise ValueError("The number of loop_vars should be consistent during the loop")
+            raise ValueError("The length of loop_vars should be consistent during the loop")
         return step_output, new_loop_vars
 
-    max_iterations = _to_python_type(max_iterations, int, "max_iteration")
+    max_iterations = _to_python_scalar(max_iterations, int, "max_iteration")
     loop_vars = _to_ndarray_tuple(loop_vars, "loop_vars")
+    # TODO(Junru): it should be work as fine if loop_vars are empty I guess,
+    # but it is semantically unnecessary to include this case.
     if len(loop_vars) == 0:
         raise ValueError("loop_vars should contain at least one element")
 
     steps = 0
     outputs = None
     while steps < max_iterations and \
-            _to_python_type(cond(*loop_vars), bool, "Return value of cond"): # loop condition
+            _to_python_scalar(cond(*loop_vars), bool, "Return value of cond"): # loop condition
         step_output, loop_vars = _func_wrapper(loop_vars)
         loop_vars = _to_ndarray_tuple(loop_vars, "loop_vars produced by func")
         if step_output is not None:
