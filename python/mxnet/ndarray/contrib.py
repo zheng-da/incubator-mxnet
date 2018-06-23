@@ -297,7 +297,7 @@ def while_loop(loop_vars, cond, func, max_iterations):
 
     max_iterations = _to_python_scalar(max_iterations, int, "max_iteration")
     loop_vars = _to_ndarray_tuple(loop_vars, "loop_vars")
-    # TODO(Junru): it should be work as fine if loop_vars are empty I guess,
+    # It should be work as fine if loop_vars are empty I guess,
     # but it is semantically unnecessary to include this case.
     if len(loop_vars) == 0:
         raise ValueError("loop_vars should contain at least one element")

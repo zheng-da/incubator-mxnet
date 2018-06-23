@@ -335,10 +335,61 @@ def foreach(body, data, init_states, name="foreach"):
 
 def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
     """Run a while loop with user-defined computation and loop condition.
-    TODO(Junru): doc
-    """
 
-    def _to_python_type(inputs, type, name):
+    This operator simulates a while loop which iterately does customized computation
+    as long as the condition is satisfied.
+
+    `loop_vars` is a list of Symbols on which the computation uses.
+
+    `cond` is a user-defined function as the loop condition.
+    It consumes `loop_vars`, and produces a scalar MXNet symbol,
+    indicating the termination of the loop.
+    The loop ends when `cond` returns false (zero).
+    The `cond` is variadic, and its signature should be
+    `cond(*loop_vars) => Symbol`.
+
+    `func` is a user-defined function as the loop body.
+    It also consumes `loop_vars`, and produces `step_output` and `new_loop_vars` at each step.
+    The number of elements, shape, dtype of each element in `step_output` should be consistent.
+    The `new_loop_vars` should be consistent with `loop_vars` on each step.
+    The `func` is variadic, and its signature should be
+    `cond(*loop_vars) => (List[Symbol] step_output, List[Symbol] new_loop_vars)`.
+
+    `max_iterations` is a scalar that defines the maximum number of iterations allowed.
+
+    This function returns a list of Symbols of length `|step_output| + |loop_vars|`.
+    The i-th element in the first `|step_output|` ones of the list represent
+    the i-th `step_output` at all step, stacked along axis 0.
+    The i-th element in the last `|loop_vars|` ones of the list
+    represent the final state of each loop variable.
+
+    TODO(Junru): writing style: use Symbol or symbol?
+    Parameters
+    ----------
+    loop_vars: list of Symbol.
+        The initial values of the loop variables.
+    cond: a Python function.
+        The loop condition.
+    func: a Python function.
+        The loop body.
+    max_iteration: a python int.
+        Maximum number of iterations.
+
+    Returns
+    -------
+    outputs: a list of Symbol of length `|step_output| + |loop_vars|`.
+        The first `|step_output|` Symbols are outputs.
+        The last `|loop_vars|` Symbols are the final state of loop variables.
+
+    Examples
+    --------
+    TODO(Junru): run this
+    >>> cond = lambda i, s: i <= 5
+    >>> func = lambda i, s: (i + 1, s + i)
+    >>> loop_vars = (mx.sym.var('i'), mx.sym.var('s'))
+    >>> outputs = mx.sym.contrib.while_loop(loop_vars, cond, func, max_iterations=10)
+    """
+    def _to_python_scalar(inputs, type, name):
         """Converts "inputs", possibly typed mxnet NDArray, a numpy ndarray, other python types,
         to the given type
         """
@@ -377,40 +428,35 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
          and "func: loop_vars -> (step_output, new_loop_vars)"
         into "func: loop_vars -> (list of step_outputs, tuple of new_loop_vars)
         """
-        result = func(*loop_vars)
-        if isinstance(result, Symbol):
-            result = (result, )
-        if isinstance(result, list):
-            result = tuple(result)
-        if not isinstance(result, tuple):
-            raise ValueError("Invalid return type of func: %s" % (type(result).__name__))
-        if len(result) == 2 and (isinstance(result[1], list) or isinstance(result[1], tuple) or len(loop_vars) == 1):
-            step_output, new_loop_vars = result
-            step_output = list(_to_symbol_tuple(step_output, "step_output"))
-        else:
-            step_output, new_loop_vars = [], result
+        step_output, new_loop_vars = func(*loop_vars)
+        step_output = step_output or []
+        new_loop_vars = new_loop_vars or []
+        step_output = _to_symbol_tuple(step_output, "step_output")
         new_loop_vars = _to_symbol_tuple(new_loop_vars, "new_loop_vars")
         if len(loop_vars) != len(new_loop_vars):
             raise ValueError("The number of loop_vars should be consistent during the loop")
         return step_output, new_loop_vars
 
     def _create_subgraph(graph_vars, graph_func, subgraph_name):
-        with AttrScope(subgraph_name=subgraph_name):
+        with AttrScope(__subgraph_name__=subgraph_name):
             # create new variables with the same name,
             # them feed them to the given func
             new_graph_vars = [symbol.var(sym.name) for sym in graph_vars]
             outputs, final_state = graph_func(new_graph_vars)
+            # nnvm graph does not allow inputs and outputs overlap
+            outputs = [symbol.op.identity(x) if x in new_graph_vars else x for x in outputs]
+            final_state = [symbol.op.identity(x) if x in new_graph_vars else x for x in final_state]
             # first `num_out_data` elements belong to `outputs`
             # other elements belong to `final_state`
             num_out_data = len(outputs)
-            outputs = list(map(symbol.op.identity, outputs))  \
-                    + list(map(symbol.op.identity, final_state))
+            outputs.extend(final_state)
             num_outputs = len(outputs)
             # group all outputs of graph_func
             graph = symbol.Group(outputs)
         return graph, num_out_data, num_outputs
 
     def _union_inputs(*graphs):
+        # TODO(Junru): confirm and doc this
         locs = []
         inputs = []
         input_id_to_loc = {}
@@ -444,9 +490,10 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
                     var_locs.append(len(input_locs) - 1)
             locs.append((input_locs, var_locs))
         return inputs, locs
-   
-    max_iterations = _to_python_type(max_iterations, int, "max_iteration")
+    max_iterations = _to_python_scalar(max_iterations, int, "max_iteration")
     loop_vars = _to_symbol_tuple(loop_vars, "loop_vars")
+    # It should be work as fine if loop_vars are empty I guess,
+    # but it is semantically unnecessary to include this case.
     if len(loop_vars) == 0:
         raise ValueError("loop_vars should contain at least one element")
     # create graph for `cond'
