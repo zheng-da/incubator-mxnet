@@ -588,6 +588,7 @@ static void WhileLoopComputeExCPU(const OpStatePtr& state_ptr,
   // The argument `outputs' are output and new_loop_vars
   // [0: num_out_data) are outputs at each step.
   // [num_out_data: ) are new_loop_vars
+  // TODO(Junru): avoid dynamic NDArray allocation
   WhileLoopState &state = state_ptr.get_state<WhileLoopState>();
   const WhileLoopParam& params = state.params;
   // a helper function, converting std::vector<NDArray> to std::vector<NDArray*>
@@ -665,6 +666,7 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
   // outputs are dl / dx
   // where f is the current function,
   // x is the input to the current function,
+  // TODO(Junru): avoid dynamic NDArray allocation
   WhileLoopState &state = state_ptr.get_state<WhileLoopState>();
   const WhileLoopParam& params = state.params;
   // sanity checks
