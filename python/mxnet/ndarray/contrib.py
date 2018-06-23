@@ -225,6 +225,8 @@ def while_loop(loop_vars, cond, func, max_iterations):
     represent the final state of each loop variable.
 
     Warning: when `cond` is never satisfied, we assume `step_output` is empty.
+    TODO(Junru): the output shape along axis 0 is not consistent to the symbloic version.
+    Should we mention this in our doc?
 
     Parameters
     ----------
@@ -285,6 +287,8 @@ def while_loop(loop_vars, cond, func, max_iterations):
         into "func: loop_vars -> (None or tuple of step_outputs, tuple of new_loop_vars)
         """
         step_output, new_loop_vars = func(*loop_vars)
+        step_output = step_output or []
+        new_loop_vars = new_loop_vars or []
         step_output = _to_ndarray_tuple(step_output, "step_output")
         new_loop_vars = _to_ndarray_tuple(new_loop_vars, "new_loop_vars")
         if len(loop_vars) != len(new_loop_vars):
@@ -299,22 +303,17 @@ def while_loop(loop_vars, cond, func, max_iterations):
         raise ValueError("loop_vars should contain at least one element")
 
     steps = 0
-    outputs = None
+    outputs = []
     while steps < max_iterations and \
             _to_python_scalar(cond(*loop_vars), bool, "Return value of cond"): # loop condition
         step_output, loop_vars = _func_wrapper(loop_vars)
-        loop_vars = _to_ndarray_tuple(loop_vars, "loop_vars produced by func")
-        if step_output is not None:
-            outputs = outputs or []
-            outputs.append(step_output)
+        outputs.append(step_output)
         steps += 1
-        if outputs is not None and len(outputs) != steps:
-            raise ValueError("Whether func produces step_output is inconsistent in the loop")
-    if len(loop_vars) == 1:
-        loop_vars,  = loop_vars
-    if outputs is not None:
-        outputs = tuple(ndarray.op.stack(*item) for item in zip(*outputs))
-        if len(outputs) == 1:
-            outputs, = outputs
-        return (outputs, loop_vars)
-    return loop_vars
+        if len(outputs) != steps or len(step_output) != len(outputs[0]):
+            raise ValueError("step_output are inconsistent on each step")
+    try:
+        outputs = list(ndarray.op.stack(*item) for item in zip(*outputs))
+    except ValueError:
+        raise ValueError("step_outputs are inconsistent on each step")
+    loop_vars = list(loop_vars)
+    return outputs + loop_vars
