@@ -798,7 +798,12 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
     // copy subg_in back to in_shape
     for (size_t i = 0; i < subg_in.size(); ++i) {
       auto eid = idx.entry_id(input_nids[i], 0);
-      SHAPE_ASSIGN_CHECK(*in_shape, input_locs[i], new_shapes[eid]);
+      auto g_out_shape = new_shapes[eid];
+      if (g_out_shape.ndim() == 0 || g_out_shape.Size() == 0) {
+        // when the shape is not fully inferred
+        continue;
+      }
+      SHAPE_ASSIGN_CHECK(*in_shape, input_locs[i], g_out_shape);
     }
     if (!fill_out_shape) {
       return true;
@@ -808,6 +813,10 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
     for (int i = 0; i < num_out_data; ++i) {
       auto eid = idx.entry_id(g.outputs[i]);
       auto g_out_shape = new_shapes[eid];
+      if (g_out_shape.ndim() == 0 || g_out_shape.Size() == 0) {
+        // when the shape is not fully inferred
+        continue;
+      }
       auto out = TShape(g_out_shape.ndim() + 1);
       out[0] = params.max_iterations;
       for (size_t i = 1; i < out.ndim(); i++)
@@ -817,17 +826,41 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
     // for results in [num_out_data, ...), ndim does not change
     for (size_t i = num_out_data; i < g.outputs.size(); ++i) {
       auto eid = idx.entry_id(g.outputs[i]);
-      SHAPE_ASSIGN_CHECK(*out_shape, i, new_shapes[eid]);
+      auto g_out_shape = new_shapes[eid];
+      if (g_out_shape.ndim() == 0 || g_out_shape.Size() == 0) {
+        // when the shape is not fully inferred
+        continue;
+      }
+      SHAPE_ASSIGN_CHECK(*out_shape, i, g_out_shape);
     }
     return g.GetAttr<size_t>("shape_num_unknown_nodes") == 0;
   };
   ShapeVector cond_out_shape{TShape(1U)}; // this means: [(1, )]
   ShapeVector func_out_shape(params.num_outputs);
-  bool success[] = {
-    infer_subg(attrs.subgraphs[0], &cond_out_shape, params.cond_input_locs, 0, false),
-    infer_subg(attrs.subgraphs[1], &func_out_shape, params.func_input_locs, params.num_out_data, true)
-  };
-  return success[0] && success[1];
+  auto sync_in_out = [&params, in_shape, out_shape]() {
+    for (size_t i = params.new_out_data; i < params.num_outputs; ++i) {
+      TShape &in = (*in_shape)[params.func_input_locs[i - new_out_data]];
+      TShape &out = (*out_shape)[i];
+      if (in == out) {
+        // they are consistent, or both unassigned
+        continue;
+      }
+      if (in.ndim() == 0 || in.Size() == 0) {
+        // now that `out != in`, assign `in` using `out`
+        in = out;
+      }
+      if (out.ndim() == 0 || out.Size() == 0) {
+        // now that `out != in`, assign `out` using `in`
+        out = in;
+      }
+    }
+  }
+  sync_in_out();
+  bool succ_0 = infer_subg(attrs.subgraphs[0], &cond_out_shape, params.cond_input_locs, 0, false);
+  sync_in_out();
+  bool succ_1 = infer_subg(attrs.subgraphs[1], &func_out_shape, params.func_input_locs, params.num_out_data, true);
+  sync_in_out();
+  return succ_0 && succ_1;
 }
 
 static bool WhileLoopType(const nnvm::NodeAttrs& attrs,
@@ -842,11 +875,33 @@ static bool WhileLoopType(const nnvm::NodeAttrs& attrs,
   WhileLoopState::extract_by_loc(*in_type, params.cond_input_locs, &cond_in_type);
   WhileLoopState::extract_by_loc(*in_type, params.func_input_locs, &func_in_type);
   std::vector<int> cond_out_type = {0};
-  bool success[] = {
-    InferSubgraphDataType(*attrs.subgraphs[0], &cond_in_type, &cond_out_type),
-    InferSubgraphDataType(*attrs.subgraphs[1], &func_in_type, out_type)
-  };
-  return success[0] && success[1];
+  auto sync_in_out = [&params, in_type, out_type]() {
+    for (size_t i = params.new_out_data; i < params.num_outputs; ++i) {
+      int &in = (*in_type)[params.func_input_locs[i - new_out_data]];
+      int &out = (*out_type)[i];
+      if (in == out) {
+        // they are consistent, or both unassigned
+        continue;
+      }
+      if (in != -1 && out != -1) {
+        LOG(ERROR) << "Type should be consistent between loop_vars and new_loop_vars";
+      }
+      if (in == -1) {
+        // now that `out != in`, assign `in` using `out`
+        in = out;
+      }
+      if (out == -1) {
+        // now that `out != in`, assign `out` using `in`
+        out = in;
+      }
+    }
+  }
+  sync_in_out();
+  bool succ_0 = InferSubgraphDataType(*attrs.subgraphs[0], &cond_in_type, &cond_out_type);
+  sync_in_out();
+  bool succ_1 = InferSubgraphDataType(*attrs.subgraphs[1], &func_in_type, out_type);
+  sync_in_out();
+  return succ_0 && succ_1;
 }
 
 static bool WhileLoopStorageType(const nnvm::NodeAttrs& attrs,
@@ -867,11 +922,34 @@ static bool WhileLoopStorageType(const nnvm::NodeAttrs& attrs,
   DispatchMode cond_mode = DispatchMode::kUndefined;
   DispatchMode func_mode = DispatchMode::kUndefined;
   *dispatch_mode = DispatchMode::kFComputeEx;
-  bool success[] = {
-    InferSubgraphStorage(*attrs.subgraphs[0], dev_mask, &cond_mode, &cond_in_attrs, &cond_out_attrs),
-    InferSubgraphStorage(*attrs.subgraphs[1], dev_mask, &func_mode, &func_in_attrs, out_attrs)
-  };
-  return success[0] && success[1];
+  auto sync_in_out = [&params, in_attrs, out_attrs]() {
+    auto bad = exec::kBadStorageID;
+    for (size_t i = params.new_out_data; i < params.num_outputs; ++i) {
+      int &in = (*in_attrs)[params.func_input_locs[i - new_out_data]];
+      int &out = (*out_attrs)[i];
+      if (in == out) {
+        // they are consistent, or both unassigned
+        continue;
+      }
+      if (in != bad && out != bad) {
+        LOG(ERROR) << "Type should be consistent between loop_vars and new_loop_vars";
+      }
+      if (in == bad) {
+        // now that `out != in`, assign `in` using `out`
+        in = out;
+      }
+      if (out == bad) {
+        // now that `out != in`, assign `out` using `in`
+        out = in;
+      }
+    }
+  }
+  sync_in_out();
+  bool succ_0 = InferSubgraphStorage(*attrs.subgraphs[0], dev_mask, &cond_mode, &cond_in_attrs, &cond_out_attrs);
+  sync_in_out();
+  bool succ_1 = InferSubgraphStorage(*attrs.subgraphs[1], dev_mask, &func_mode, &func_in_attrs, out_attrs);
+  sync_in_out();
+  return succ_0 && succ_1;
 }
 
 static bool BackwardWhileLoopStorageType(const nnvm::NodeAttrs& attrs,
