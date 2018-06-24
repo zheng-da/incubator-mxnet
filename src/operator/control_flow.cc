@@ -922,7 +922,7 @@ static bool WhileLoopType(const nnvm::NodeAttrs& attrs,
   sync_in_in(&cond_in_type, params.cond_input_locs);
   bool succ_1 = InferSubgraphDataType(*attrs.subgraphs[1], &func_in_type, out_type);
   sync_in_out();
-  sync_in_in(&cond_in_type, params.func_input_locs);
+  sync_in_in(&func_in_type, params.func_input_locs);
   return succ_0 && succ_1;
 }
 
