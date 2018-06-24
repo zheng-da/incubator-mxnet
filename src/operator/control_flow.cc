@@ -838,8 +838,8 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
   ShapeVector cond_out_shape{TShape(1U)}; // this means: [(1, )]
   ShapeVector func_out_shape(params.num_outputs);
   auto sync_in_out = [&params, in_shape, out_shape]() {
-    for (size_t i = params.new_out_data; i < params.num_outputs; ++i) {
-      TShape &in = (*in_shape)[params.func_input_locs[i - new_out_data]];
+    for (int i = params.num_out_data; i < params.num_outputs; ++i) {
+      TShape &in = (*in_shape)[params.func_input_locs[i - params.num_out_data]];
       TShape &out = (*out_shape)[i];
       if (in == out) {
         // they are consistent, or both unassigned
@@ -854,7 +854,7 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
         out = in;
       }
     }
-  }
+  };
   sync_in_out();
   bool succ_0 = infer_subg(attrs.subgraphs[0], &cond_out_shape, params.cond_input_locs, 0, false);
   sync_in_out();
@@ -876,8 +876,8 @@ static bool WhileLoopType(const nnvm::NodeAttrs& attrs,
   WhileLoopState::extract_by_loc(*in_type, params.func_input_locs, &func_in_type);
   std::vector<int> cond_out_type = {0};
   auto sync_in_out = [&params, in_type, out_type]() {
-    for (size_t i = params.new_out_data; i < params.num_outputs; ++i) {
-      int &in = (*in_type)[params.func_input_locs[i - new_out_data]];
+    for (int i = params.num_out_data; i < params.num_outputs; ++i) {
+      int &in = (*in_type)[params.func_input_locs[i - params.num_out_data]];
       int &out = (*out_type)[i];
       if (in == out) {
         // they are consistent, or both unassigned
@@ -895,12 +895,34 @@ static bool WhileLoopType(const nnvm::NodeAttrs& attrs,
         out = in;
       }
     }
-  }
+  };
+  auto sync_in_in = [in_type] (std::vector<int> *subg_in_type, const nnvm::Tuple<dim_t> &input_locs) {
+    for (size_t i = 0; i < input_locs.ndim(); ++i) {
+      size_t j = input_locs[i];
+      // in_type[j] <=> subg_in_type[i]
+      int &subg = (*subg_in_type)[i];
+      int &maing = (*in_type)[j];
+      if (subg == maing) {
+        continue;
+      }
+      if (subg != -1 && maing != -1) {
+        LOG(ERROR) << "Type should be consistent between loop_vars and new_loop_vars";
+      }
+      if (subg == -1) {
+        maing = subg;
+      }
+      if (maing == -1) {
+        subg = maing;
+      }
+    }
+  };
   sync_in_out();
   bool succ_0 = InferSubgraphDataType(*attrs.subgraphs[0], &cond_in_type, &cond_out_type);
   sync_in_out();
+  sync_in_in(&cond_in_type, params.cond_input_locs);
   bool succ_1 = InferSubgraphDataType(*attrs.subgraphs[1], &func_in_type, out_type);
   sync_in_out();
+  sync_in_in(&cond_in_type, params.func_input_locs);
   return succ_0 && succ_1;
 }
 
@@ -924,15 +946,15 @@ static bool WhileLoopStorageType(const nnvm::NodeAttrs& attrs,
   *dispatch_mode = DispatchMode::kFComputeEx;
   auto sync_in_out = [&params, in_attrs, out_attrs]() {
     auto bad = exec::kBadStorageID;
-    for (size_t i = params.new_out_data; i < params.num_outputs; ++i) {
-      int &in = (*in_attrs)[params.func_input_locs[i - new_out_data]];
+    for (int i = params.num_out_data; i < params.num_outputs; ++i) {
+      int &in = (*in_attrs)[params.func_input_locs[i - params.num_out_data]];
       int &out = (*out_attrs)[i];
       if (in == out) {
         // they are consistent, or both unassigned
         continue;
       }
       if (in != bad && out != bad) {
-        LOG(ERROR) << "Type should be consistent between loop_vars and new_loop_vars";
+        LOG(ERROR) << "Storage type should be consistent between loop_vars and new_loop_vars";
       }
       if (in == bad) {
         // now that `out != in`, assign `in` using `out`
@@ -943,12 +965,35 @@ static bool WhileLoopStorageType(const nnvm::NodeAttrs& attrs,
         out = in;
       }
     }
-  }
+  };
+  auto sync_in_in = [in_attrs] (std::vector<int> *subg_in_attrs, const nnvm::Tuple<dim_t> &input_locs) {
+    auto bad = exec::kBadStorageID;
+    for (size_t i = 0; i < input_locs.ndim(); ++i) {
+      size_t j = input_locs[i];
+      // in_attrs[j] <=> subg_in_attrs[i]
+      int &subg = (*subg_in_attrs)[i];
+      int &maing = (*in_attrs)[j];
+      if (subg == maing) {
+        continue;
+      }
+      if (subg != bad && maing != bad) {
+        LOG(ERROR) << "Type should be consistent between loop_vars and new_loop_vars";
+      }
+      if (subg == bad) {
+        maing = subg;
+      }
+      if (maing == bad) {
+        subg = maing;
+      }
+    }
+  };
   sync_in_out();
   bool succ_0 = InferSubgraphStorage(*attrs.subgraphs[0], dev_mask, &cond_mode, &cond_in_attrs, &cond_out_attrs);
   sync_in_out();
+  sync_in_in(&cond_in_attrs, params.cond_input_locs);
   bool succ_1 = InferSubgraphStorage(*attrs.subgraphs[1], dev_mask, &func_mode, &func_in_attrs, out_attrs);
   sync_in_out();
+  sync_in_in(&func_in_attrs, params.func_input_locs);
   return succ_0 && succ_1;
 }
 
