@@ -45,7 +45,7 @@ def test_simple_add():
     # Case 1.1: result should be sum([1, 2, 3 ... 100])
     model = _TestBlock(
         cond=lambda i, s: i <= 5,
-        func=lambda i, s: (i + 1, s + i),
+        func=lambda i, s: (None, (i + 1, s + i)),
         max_iterations=10,
     )
     model.hybridize()
@@ -58,7 +58,7 @@ def test_simple_add():
     # Case 1.2: result should be sum([1, 2, 3 ... 1000])
     model = _TestBlock(
         cond=lambda i, s, true: true,
-        func=lambda i, s, true: (i + 1, s + i, true),
+        func=lambda i, s, true: (None, (i + 1, s + i, true)),
         max_iterations=1000,
     )
     model.hybridize()
@@ -73,7 +73,7 @@ def test_simple_add():
     # Case 1.3: result should be sum([])
     model = _TestBlock(
         cond=lambda i, s, false: false,
-        func=lambda i, s, false: (i + 1, s + i, false),
+        func=lambda i, s, false: (None, (i + 1, s + i, false)),
         max_iterations=1000,
     )
     model.hybridize()
