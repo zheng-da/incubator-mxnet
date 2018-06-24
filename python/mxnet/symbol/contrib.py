@@ -429,8 +429,10 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
         into "func: loop_vars -> (list of step_outputs, tuple of new_loop_vars)
         """
         step_output, new_loop_vars = func(*loop_vars)
-        step_output = step_output or []
-        new_loop_vars = new_loop_vars or []
+        if step_output is None:
+            step_output = []
+        if new_loop_vars is None:
+            new_loop_vars = []
         step_output = _to_symbol_tuple(step_output, "step_output")
         new_loop_vars = _to_symbol_tuple(new_loop_vars, "new_loop_vars")
         if len(loop_vars) != len(new_loop_vars):
@@ -444,8 +446,9 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
             new_graph_vars = [symbol.var(sym.name) for sym in graph_vars]
             outputs, final_state = graph_func(new_graph_vars)
             # nnvm graph does not allow inputs and outputs overlap
-            outputs = [symbol.op.identity(x) if x in new_graph_vars else x for x in outputs]
-            final_state = [symbol.op.identity(x) if x in new_graph_vars else x for x in final_state]
+            id_new_graph_vars = {id(x) for x in new_graph_vars}
+            outputs = [symbol.op.identity(x) if id(x) in id_new_graph_vars else x for x in outputs]
+            final_state = [symbol.op.identity(x) if id(x) in id_new_graph_vars else x for x in final_state]
             # first `num_out_data` elements belong to `outputs`
             # other elements belong to `final_state`
             num_out_data = len(outputs)
