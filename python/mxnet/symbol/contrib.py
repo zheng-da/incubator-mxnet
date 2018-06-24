@@ -456,29 +456,33 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
         return graph, num_out_data, num_outputs
 
     def _union_inputs(*graphs):
-        # TODO(Junru): confirm and doc this
-        locs = []
-        inputs = []
-        input_id_to_loc = {}
+        # Given a list of graphs, each whose inputs are either from loop_vars or other variables.
+        # 1) calculate a list `inputs`, the union of their inputs.
+        # 2) for each graph, determine in which indices their inputs reside in `inputs` 
+        # 3) for each variable in the input of `graph`, find which index it is
+        inputs = []             # List[Symbol], result of 1)
+        locs = []               # List[Tuple(List[Int], List[Int])], a list of tuples, where tuples are results of 2) and 3)
+        input_id_to_loc = {}    # Dict[int, int], given id(sym), input_id_to_loc maps it to a `loc`, where inputs[loc] = sym
         for graph in graphs:
-            # input_syms should be all required inputs to this subgraph
+            # input_syms: all inputs to the `graph`
             name_to_input_syms = {sym.name: sym for sym in _get_graph_inputs(graph)}
-            # loop_vars contains variables that can be either an input or not
+            # some loop_vars are inputs to `graph`, some are not
             name_to_loop_vars = {sym.name: sym for sym in loop_vars}
-            # cut_g_syms contains inputs created by cut_graph
+            # other inputs to `graph` created by cut_graph
             name_to_cut_g_syms = {sym.list_outputs()[0]: sym for sym in _cut_subgraph(graph)}
             # collect arguments for each subgraph
-            input_locs = []
-            var_locs = []
+            input_locs = []     # results from the second step
+            var_locs = []       # results from the third step
             for name in graph.list_inputs():
-                assert name in name_to_input_syms
-                # TODO(Junru): simplify this, loop_vars and cut_g_syms should be disjoint
+                assert name in name_to_input_syms  # it should obviously hold
+                # name -> sym
                 if name in name_to_loop_vars:
                     sym = name_to_loop_vars[name]
                 elif name in name_to_cut_g_syms:
                     sym = name_to_cut_g_syms[name]
                 else:
                     sym = copy.deepcopy(name_to_input_syms[name])
+                # do 2), and 1) is implicitly done
                 if id(sym) in input_id_to_loc:
                     loc = input_id_to_loc[id(sym)]
                 else:
@@ -486,6 +490,7 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
                     inputs.append(sym)
                     input_id_to_loc[id(sym)] = loc
                 input_locs.append(loc)
+                # do 3)
                 if name in name_to_loop_vars:
                     var_locs.append(len(input_locs) - 1)
             locs.append((input_locs, var_locs))
