@@ -49,7 +49,7 @@ def test_simple_add():
         max_iterations=10,
     )
     model.hybridize()
-    result = model(
+    _, result = model(
         mx.nd.array([1], dtype="int64"), # i
         mx.nd.array([0], dtype="int64"), # s
     )
@@ -62,7 +62,7 @@ def test_simple_add():
         max_iterations=1000,
     )
     model.hybridize()
-    result = model(
+    _, result = model(
         mx.nd.array([1], dtype="int64"), # i
         mx.nd.array([0], dtype="int64"), # s
         mx.nd.array([1], dtype="int64"), # true
@@ -77,7 +77,7 @@ def test_simple_add():
         max_iterations=1000,
     )
     model.hybridize()
-    result = model(
+    _, result = model(
         mx.nd.array([1], dtype="int64"), # i
         mx.nd.array([0], dtype="int64"), # s
         mx.nd.array([0], dtype="int64"), # false
@@ -92,7 +92,7 @@ def test_simple_add():
         max_iterations=1000,
     )
     model.hybridize()
-    outputs, result_i, result_s = model(
+    (outputs, ), (result_i, result_s) = model(
         mx.nd.array([1], dtype="int64"), # i
         mx.nd.array([0], dtype="int64"), # s
     )
@@ -106,7 +106,7 @@ def test_simple_add():
         max_iterations=1000,
     )
     model.hybridize()
-    outputs, result_i, result_s, _ = model(
+    (outputs, ), (result_i, result_s, _) = model(
         mx.nd.array([1], dtype="int64"), # i
         mx.nd.array([0], dtype="int64"), # s
         mx.nd.array([1], dtype="int64"), # s

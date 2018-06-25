@@ -380,6 +380,7 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
     outputs: a list of Symbol of length `|step_output| + |loop_vars|`.
         The first `|step_output|` Symbols are outputs.
         The last `|loop_vars|` Symbols are the final state of loop variables.
+    TODO(Junru): change the output format
 
     Examples
     --------
@@ -526,4 +527,6 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
         num_out_data=num_out_data,
         num_outputs=num_outputs
     )
-    return result
+    outputs = [result[i] for i in range(num_out_data)]
+    final_loop_vars = [result[i] for i in range(num_out_data, num_outputs)]
+    return outputs, final_loop_vars

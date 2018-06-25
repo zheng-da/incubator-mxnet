@@ -244,6 +244,7 @@ def while_loop(loop_vars, cond, func, max_iterations):
     outputs: a list of NDArrays of length `|step_output| + |loop_vars|`.
         The first `|step_output|` NDArrays are outputs.
         The last `|loop_vars|` NDArrays are the final state of loop variables.
+    TODO(Junru): change the output format
 
     Examples
     --------
@@ -315,5 +316,4 @@ def while_loop(loop_vars, cond, func, max_iterations):
         outputs = list(ndarray.op.stack(*item) for item in zip(*outputs))
     except ValueError:
         raise ValueError("step_outputs are inconsistent on each step")
-    loop_vars = list(loop_vars)
-    return outputs + loop_vars
+    return outputs, list(loop_vars)
