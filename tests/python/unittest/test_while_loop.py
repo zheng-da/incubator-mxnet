@@ -21,7 +21,8 @@ import numpy as np
 import copy
 from numpy.testing import assert_allclose
 import unittest
-from mxnet.test_utils import almost_equal, assert_almost_equal
+from mxnet.test_utils import almost_equal, default_context
+from numpy.testing import assert_allclose as assert_almost_equal  # TODO(Junru): from mxnet.test_utils import almost_almost_equal
 
 
 def test_simple_add():
@@ -136,6 +137,86 @@ def test_simple_add():
         assert result_i.asscalar() == 1
         assert result_s.asscalar() == 0
 
+
+def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, max_iterations):
+
+    def _create_vars(num, prefix):
+        return [mx.sym.var(prefix + str(i)) for i in range(num)]
+
+    def _create_arrays(shapes):
+        return [mx.nd.random.uniform(-1.0, 1.0, shape=x) for x in shapes]
+
+    def _create_dict(prefix, shapes):
+        return {prefix + str(i): mx.nd.empty(x) for i, x in enumerate(shapes)}
+
+    def _merge_dict(*dicts):
+        result = {}
+        for item in dicts:
+            result.update(item)
+        return result
+
+    def _get_imperative_result():
+        free_vars = [args["FreeVar" + str(i)].copy() for i, _ in enumerate(free_var_shapes)]
+        loop_vars = [args["LoopVar" + str(i)].copy() for i, _ in enumerate(loop_var_shapes)]
+        for var in free_vars + loop_vars:
+            var.attach_grad()
+        with mx.autograd.record():
+            outputs, final_loop_vars = mx.sym.contrib.while_loop(
+                cond=lambda _loop_vars: cond(_loop_vars, free_vars),
+                func=lambda _loop_vars: func(_loop_vars, free_vars),
+                loop_vars=loop_vars,
+                max_iterations=max_iterations,
+            )
+            n_steps = outputs[0].shape[0] if outputs else 0
+            out_grads = _create_arrays(x.shape for x in outputs)  \
+                      + _create_arrays(x.shape for x in final_loop_vars)
+            loop_result_nd = [x * 2 for x in outputs] + [x * 3 for x in final_loop_vars]
+            grads = []
+            if is_train:
+                cat_out = mx.nd.concat(*[x.flatten() for x in loop_result_nd], dim=0)
+                out_grads = mx.nd.concat(*[x.flatten() for x in out_grads], dim=0)
+                cat_out.backward(out_grads)
+                grads = [free_vars[i].grad for i, _ in enumerate(free_var_shapes)] \
+                      + [loop_vars[i].grad for i, _ in enumerate(loop_var_shapes)]
+                # grad_dict = _merge_dict(
+                #     {"FreeVar" + str(i): },
+                #     {"LoopVar" + str(i): loop_vars[i].grad},
+                # )
+            return loop_result_nd, grads, out_grads, n_steps
+
+    def _get_symbolic_result(out_grads, n_steps):
+        free_syms = _create_vars(len(free_var_shapes), "FreeVar")
+        loop_syms = _create_vars(len(loop_var_shapes), "LoopVar")
+        outputs, final_loop_syms = mx.sym.contrib.while_loop(
+            cond=lambda _loop_vars: cond(_loop_vars, free_syms),
+            func=lambda _loop_vars: func(_loop_vars, free_syms),
+            loop_vars=loop_syms,
+            max_iterations=max_iterations,
+        )
+        outputs = outputs[ : n_steps]
+        loop_result_sym = [x * 2 for x in outputs] + [x * 3 for x in final_loop_syms]
+        loop_result_sym = mx.sym.Group(loop_result_sym)
+        executor = loop_result_sym.bind(ctx=default_context(), args=args)
+        loop_result_nd = executor.forward(is_train=is_train)
+        grads = []
+        if is_train:
+            executor.backward(out_grads=out_grads)
+            grads = [executor.grad_dict["FreeVar" + str(i)] for i, _ in enumerate(free_var_shapes)] \
+                  + [executor.grad_dict["LoopVar" + str(i)] for i, _ in enumerate(loop_var_shapes)]
+        return loop_result_nd, grads
+
+    args = _merge_dict(
+        _create_dict("FreeVar", loop_var_shapes),
+        _create_dict("LoopVar", free_var_shapes),
+    )
+    out_grads = []
+    imp_outs, imp_grads, out_grads, n_steps = _get_imperative_result()
+    sym_outs, sym_grads = _get_symbolic_result(out_grads, n_steps)
+    assert set(imp_grads.keys()) == set(sym_grads.keys())
+    for imp_out, sym_out in zip(imp_outs, sym_outs):
+        assert_almost_equal(imp_out.asnumpy(), sym_out.asnumpy())
+    for imp_grad, sym_grad in zip(imp_grads, sym_grads):
+        assert_almost_equal(imp_grad.asnumpy(), sym_grad.asnumpy())
 
 if __name__ == '__main__':
     # import nose
