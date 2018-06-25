@@ -138,7 +138,7 @@ def test_simple_add():
         assert result_s.asscalar() == 0
 
 
-def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, max_iterations):
+def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, max_iterations, is_for):
 
     def _create_vars(num, prefix):
         return [mx.sym.var(prefix + str(i)) for i in range(num)]
@@ -147,7 +147,7 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
         return [mx.nd.random.uniform(-1.0, 1.0, shape=x) for x in shapes]
 
     def _create_dict(prefix, shapes):
-        return {prefix + str(i): mx.nd.empty(x) for i, x in enumerate(shapes)}
+        return {prefix + str(i): mx.nd.random.uniform(-1.0, 1.0, shape=x) for i, x in enumerate(shapes)}
 
     def _merge_dict(*dicts):
         result = {}
@@ -161,9 +161,9 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
         for var in free_vars + loop_vars:
             var.attach_grad()
         with mx.autograd.record():
-            outputs, final_loop_vars = mx.sym.contrib.while_loop(
-                cond=lambda _loop_vars: cond(_loop_vars, free_vars),
-                func=lambda _loop_vars: func(_loop_vars, free_vars),
+            outputs, final_loop_vars = mx.nd.contrib.while_loop(
+                cond=lambda *_loop_vars: cond(_loop_vars, free_vars),
+                func=lambda *_loop_vars: func(_loop_vars, free_vars),
                 loop_vars=loop_vars,
                 max_iterations=max_iterations,
             )
@@ -202,9 +202,12 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
         return loop_result_nd, grads
 
     args = _merge_dict(
-        _create_dict("FreeVar", loop_var_shapes),
-        _create_dict("LoopVar", free_var_shapes),
+        _create_dict("FreeVar", free_var_shapes),
+        _create_dict("LoopVar", loop_var_shapes),
     )
+    if is_for:
+        assert loop_var_shapes[0] == (1, )
+        loop_var_shapes[0] = mx.nd.array([1])
     out_grads = []
     imp_outs, imp_grads, out_grads, n_steps = _get_imperative_result()
     sym_outs, sym_grads = _get_symbolic_result(out_grads, n_steps)
@@ -215,12 +218,45 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
 
 
 def test_while_loop_for_foreach():
-    """Test while loops exported from foreach
+    """Test while loops exported from test_foreach
     """
-    pass
+    def make_for_cond(length):
+        return lambda loop, _: loop[0] < length
+
+    def step_1(loop, free):
+        """This simulates:
+        def compute(s, inputs, f_1, length):
+            outputs = []
+            for i in range(length):
+                s += inputs[i] * 2 + f_1
+                outputs.append(s)
+            return outputs, s
+        """
+        (i, s), (scanned, f_1, _) = loop, free
+        in_ = scanned.take(i)
+        out = in_ * 2 + s + f_1
+        return (out, (i + 1, out))
+
+    _verify_while_loop(
+        cond=make_for_cond(length=3),
+        func=step_1,
+        loop_var_shapes=[
+            (1, ),   # i
+            (2, ),   # s
+        ],
+        free_var_shapes=[
+            (3, 2),         # scanned
+            (2, ),          # f_1
+            (3, 4, 5, 6),   # f_2, unused
+        ],
+        is_train=True,
+        max_iterations=1000,
+        is_for=True,
+    )
 
 
 if __name__ == '__main__':
     # import nose
     # nose.runmodule()
-    test_simple_add()
+    # test_simple_add()
+    test_while_loop_for_foreach()

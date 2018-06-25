@@ -288,8 +288,10 @@ def while_loop(loop_vars, cond, func, max_iterations):
         into "func: loop_vars -> (None or tuple of step_outputs, tuple of new_loop_vars)
         """
         step_output, new_loop_vars = func(*loop_vars)
-        step_output = step_output or []
-        new_loop_vars = new_loop_vars or []
+        if step_output is None:
+            step_output = []
+        if new_loop_vars is None:
+            new_loop_vars = []
         step_output = _to_ndarray_tuple(step_output, "step_output")
         new_loop_vars = _to_ndarray_tuple(new_loop_vars, "new_loop_vars")
         if len(loop_vars) != len(new_loop_vars):
