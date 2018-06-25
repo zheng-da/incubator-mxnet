@@ -22,7 +22,7 @@ import copy
 from numpy.testing import assert_allclose
 import unittest
 from mxnet.test_utils import almost_equal, default_context
-from numpy.testing import assert_allclose as assert_almost_equal  # TODO(Junru): from mxnet.test_utils import almost_almost_equal
+from numpy.testing import assert_allclose as assert_almost_equal  # This is more restrictive
 
 
 def test_simple_add():
@@ -178,10 +178,6 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
                 cat_out.backward(out_grads)
                 grads = [free_vars[i].grad for i, _ in enumerate(free_var_shapes)] \
                       + [loop_vars[i].grad for i, _ in enumerate(loop_var_shapes)]
-                # grad_dict = _merge_dict(
-                #     {"FreeVar" + str(i): },
-                #     {"LoopVar" + str(i): loop_vars[i].grad},
-                # )
             return loop_result_nd, grads, out_grads, n_steps
 
     def _get_symbolic_result(out_grads, n_steps):
@@ -212,11 +208,17 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
     out_grads = []
     imp_outs, imp_grads, out_grads, n_steps = _get_imperative_result()
     sym_outs, sym_grads = _get_symbolic_result(out_grads, n_steps)
-    assert set(imp_grads.keys()) == set(sym_grads.keys())
     for imp_out, sym_out in zip(imp_outs, sym_outs):
         assert_almost_equal(imp_out.asnumpy(), sym_out.asnumpy())
     for imp_grad, sym_grad in zip(imp_grads, sym_grads):
         assert_almost_equal(imp_grad.asnumpy(), sym_grad.asnumpy())
+
+
+def test_while_loop_for_foreach():
+    """Test while loops exported from foreach
+    """
+    pass
+
 
 if __name__ == '__main__':
     # import nose
