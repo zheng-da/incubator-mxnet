@@ -552,6 +552,55 @@ class WhileLoopState: public LoopState {
       out->push_back(array[i]);
     }
   }
+  static bool is_shape_udf(const TShape &x) {
+    return x.ndim() == 0 || x.Size() == 0;
+  }
+  static bool is_stype_udf(const int &x) {
+    return x == exec::kBadStorageID;
+  }
+  static bool is_type_udf(const int &x) {
+    return x == -1;
+  }
+
+  template <typename T>
+  static bool fill_value(T &x, T &y, bool x_empty, bool y_empty) {
+    if (x == y || (x_empty && y_empty)) {
+      return true;
+    }
+    if (!x_empty && !y_empty) {
+      return false;
+    }
+    if (x_empty) {
+      x = y;
+    }
+    if (y_empty) {
+      y = x;
+    }
+    return true;
+  }
+  template <typename T>
+  static bool sync_in_in(const nnvm::Tuple<dim_t> &input_locs, std::vector<T> *in, std::vector<T> *subg_in, std::function<bool(const T &)> is_empty) {
+    for (size_t i = 0; i < input_locs.ndim(); ++i) {
+      T &x = in->at(input_locs[i]);
+      T &y = subg_in->at(i);
+      fill_value(x, y, is_empty(x), is_empty(y));
+    }
+    return true;
+  }
+  template <typename T>
+  static bool sync_in_out(const WhileLoopParam& params, std::vector<T> *in, std::vector<T> *out, std::function<bool(const T &)> is_empty) {
+    for (int i = params.num_out_data; i < params.num_outputs; ++i) {
+      // each out->at(i) is a params, loop_var
+      T &x = in->at(
+        params.func_input_locs[
+          params.func_var_locs[i - params.num_out_data]
+        ]
+      );
+      T &y = out->at(i);
+      fill_value(x, y, is_empty(x), is_empty(y));
+    }
+    return true;
+  }
 };
 
 template <typename T>
@@ -763,6 +812,7 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
                            std::vector<TShape> *out_shape) {
   using nnvm::ShapeVector;
   const WhileLoopParam& params = nnvm::get<WhileLoopParam>(attrs.parsed);
+  static const std::function<bool(const TShape &)> is_udf = WhileLoopState::is_shape_udf;
   // sanity checks
   CHECK_EQ(in_shape->size() + 2U, (size_t) params.num_args);
   CHECK_EQ(out_shape->size(), (size_t) params.num_outputs);
@@ -850,39 +900,18 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
   };
   ShapeVector cond_out_shape{TShape(1U)}; // this means: [(1, )]
   ShapeVector func_out_shape(params.num_outputs);
-  auto sync_in_out = [&params, in_shape, out_shape]() {
-    for (int i = params.num_out_data; i < params.num_outputs; ++i) {
-      TShape &in = (*in_shape)[
-        params.func_input_locs[
-          params.func_var_locs[i - params.num_out_data]
-        ]
-      ];
-      TShape &out = (*out_shape)[i];
-      if (in == out) {
-        // they are consistent, or both unassigned
-        continue;
-      }
-      if (in.ndim() == 0 || in.Size() == 0) {
-        // now that `out != in`, assign `in` using `out`
-        in = out;
-      }
-      if (out.ndim() == 0 || out.Size() == 0) {
-        // now that `out != in`, assign `out` using `in`
-        out = in;
-      }
-    }
-  };
-  sync_in_out();
+  WhileLoopState::sync_in_out(params, in_shape, out_shape, is_udf);
   bool succ_0 = infer_subg(attrs.subgraphs[0], &cond_out_shape, params.cond_input_locs, 0, false);
-  sync_in_out();
+  WhileLoopState::sync_in_out(params, in_shape, out_shape, is_udf);
   bool succ_1 = infer_subg(attrs.subgraphs[1], &func_out_shape, params.func_input_locs, params.num_out_data, true);
-  sync_in_out();
+  WhileLoopState::sync_in_out(params, in_shape, out_shape, is_udf);
   return succ_0 && succ_1;
 }
 
 static bool WhileLoopType(const nnvm::NodeAttrs& attrs,
                           std::vector<int> *in_type, std::vector<int> *out_type) {
   const WhileLoopParam& params = nnvm::get<WhileLoopParam>(attrs.parsed);
+  static const std::function<bool(const int &)> is_udf = WhileLoopState::is_type_udf;
   CHECK_EQ(in_type->size() + 2U, (size_t) params.num_args);
   CHECK_EQ(out_type->size(), (size_t) params.num_outputs);
   CHECK_EQ(attrs.subgraphs.size(), 2U);
@@ -892,54 +921,13 @@ static bool WhileLoopType(const nnvm::NodeAttrs& attrs,
   WhileLoopState::extract_by_loc(*in_type, params.cond_input_locs, &cond_in_type);
   WhileLoopState::extract_by_loc(*in_type, params.func_input_locs, &func_in_type);
   std::vector<int> cond_out_type = {0};
-  auto sync_in_out = [&params, in_type, out_type]() {
-    for (int i = params.num_out_data; i < params.num_outputs; ++i) {
-      int &in = (*in_type)[params.func_input_locs[i - params.num_out_data]];
-      int &out = (*out_type)[i];
-      if (in == out) {
-        // they are consistent, or both unassigned
-        continue;
-      }
-      if (in != -1 && out != -1) {
-        LOG(ERROR) << "Type should be consistent between loop_vars and new_loop_vars";
-      }
-      if (in == -1) {
-        // now that `out != in`, assign `in` using `out`
-        in = out;
-      }
-      if (out == -1) {
-        // now that `out != in`, assign `out` using `in`
-        out = in;
-      }
-    }
-  };
-  auto sync_in_in = [in_type] (std::vector<int> *subg_in_type, const nnvm::Tuple<dim_t> &input_locs) {
-    for (size_t i = 0; i < input_locs.ndim(); ++i) {
-      size_t j = input_locs[i];
-      // in_type[j] <=> subg_in_type[i]
-      int &subg = (*subg_in_type)[i];
-      int &maing = (*in_type)[j];
-      if (subg == maing) {
-        continue;
-      }
-      if (subg != -1 && maing != -1) {
-        LOG(ERROR) << "Type should be consistent between loop_vars and new_loop_vars";
-      }
-      if (subg == -1) {
-        maing = subg;
-      }
-      if (maing == -1) {
-        subg = maing;
-      }
-    }
-  };
-  sync_in_out();
+  WhileLoopState::sync_in_out(params, in_type, out_type, is_udf);
   bool succ_0 = InferSubgraphDataType(*attrs.subgraphs[0], &cond_in_type, &cond_out_type);
-  sync_in_out();
-  sync_in_in(&cond_in_type, params.cond_input_locs);
+  WhileLoopState::sync_in_out(params, in_type, out_type, is_udf);
+  WhileLoopState::sync_in_in(params.cond_input_locs, in_type, &cond_in_type, is_udf);
   bool succ_1 = InferSubgraphDataType(*attrs.subgraphs[1], &func_in_type, out_type);
-  sync_in_out();
-  sync_in_in(&func_in_type, params.func_input_locs);
+  WhileLoopState::sync_in_out(params, in_type, out_type, is_udf);
+  WhileLoopState::sync_in_in(params.func_input_locs, in_type, &func_in_type, is_udf);
   return succ_0 && succ_1;
 }
 
@@ -949,6 +937,7 @@ static bool WhileLoopStorageType(const nnvm::NodeAttrs& attrs,
                                  std::vector<int> *in_attrs,
                                  std::vector<int> *out_attrs) {
   const WhileLoopParam& params = nnvm::get<WhileLoopParam>(attrs.parsed);
+  static const std::function<bool(const int &)> is_udf = WhileLoopState::is_stype_udf;
   CHECK_EQ(in_attrs->size() + 2U, (size_t) params.num_args);
   CHECK_EQ(out_attrs->size(), (size_t) params.num_outputs);
   CHECK_EQ(attrs.subgraphs.size(), 2U);
@@ -961,56 +950,13 @@ static bool WhileLoopStorageType(const nnvm::NodeAttrs& attrs,
   DispatchMode cond_mode = DispatchMode::kUndefined;
   DispatchMode func_mode = DispatchMode::kUndefined;
   *dispatch_mode = DispatchMode::kFComputeEx;
-  auto sync_in_out = [&params, in_attrs, out_attrs]() {
-    auto bad = exec::kBadStorageID;
-    for (int i = params.num_out_data; i < params.num_outputs; ++i) {
-      int &in = (*in_attrs)[params.func_input_locs[i - params.num_out_data]];
-      int &out = (*out_attrs)[i];
-      if (in == out) {
-        // they are consistent, or both unassigned
-        continue;
-      }
-      if (in != bad && out != bad) {
-        LOG(ERROR) << "Storage type should be consistent between loop_vars and new_loop_vars";
-      }
-      if (in == bad) {
-        // now that `out != in`, assign `in` using `out`
-        in = out;
-      }
-      if (out == bad) {
-        // now that `out != in`, assign `out` using `in`
-        out = in;
-      }
-    }
-  };
-  auto sync_in_in = [in_attrs] (std::vector<int> *subg_in_attrs, const nnvm::Tuple<dim_t> &input_locs) {
-    auto bad = exec::kBadStorageID;
-    for (size_t i = 0; i < input_locs.ndim(); ++i) {
-      size_t j = input_locs[i];
-      // in_attrs[j] <=> subg_in_attrs[i]
-      int &subg = (*subg_in_attrs)[i];
-      int &maing = (*in_attrs)[j];
-      if (subg == maing) {
-        continue;
-      }
-      if (subg != bad && maing != bad) {
-        LOG(ERROR) << "Type should be consistent between loop_vars and new_loop_vars";
-      }
-      if (subg == bad) {
-        maing = subg;
-      }
-      if (maing == bad) {
-        subg = maing;
-      }
-    }
-  };
-  sync_in_out();
+  WhileLoopState::sync_in_out(params, in_attrs, out_attrs, is_udf);
   bool succ_0 = InferSubgraphStorage(*attrs.subgraphs[0], dev_mask, &cond_mode, &cond_in_attrs, &cond_out_attrs);
-  sync_in_out();
-  sync_in_in(&cond_in_attrs, params.cond_input_locs);
+  WhileLoopState::sync_in_out(params, in_attrs, out_attrs, is_udf);
+  WhileLoopState::sync_in_in(params.cond_input_locs, in_attrs, &cond_in_attrs, is_udf);
   bool succ_1 = InferSubgraphStorage(*attrs.subgraphs[1], dev_mask, &func_mode, &func_in_attrs, out_attrs);
-  sync_in_out();
-  sync_in_in(&func_in_attrs, params.func_input_locs);
+  WhileLoopState::sync_in_out(params, in_attrs, out_attrs, is_udf);
+  WhileLoopState::sync_in_in(params.func_input_locs, in_attrs, &func_in_attrs, is_udf);
   return succ_0 && succ_1;
 }
 
