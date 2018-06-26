@@ -675,14 +675,13 @@ static void WhileLoopComputeExCPU(const OpStatePtr& state_ptr,
     }
     // func_outputs[num_out_data: ] are new_loop_vars, need to allocate new memory
     for (size_t i = params.num_out_data; i < outputs.size(); ++i) {
-      size_t j = i - params.num_out_data;
-      func_outputs[i] = NDArray(inputs[j].shape(), inputs[j].ctx(), true, inputs[j].dtype());
+      func_outputs[i] = NDArray(outputs[i].shape(), outputs[i].ctx(), true, outputs[i].dtype());
     }
     state.Forward(step, func_inputs, req, func_outputs, ctx.need_grad);
     // func_inputs on the next step:
     // the output (new_loop_vars) will become the new inputs (loop_vars)
     for (size_t i = params.num_out_data; i < outputs.size(); ++i) {
-      size_t j = i - params.num_out_data;
+      size_t j = params.func_var_locs[i - params.num_out_data];
       CHECK_EQ(func_inputs[j].shape(), func_outputs[i].shape());
       func_inputs[j] = func_outputs[i];
       int k = state.oi_map[j];
@@ -700,7 +699,7 @@ static void WhileLoopComputeExCPU(const OpStatePtr& state_ptr,
   // the final_loop_vars is the same as loop_vars, which are also stored in func_inputs
   // therefore, we copy func_inputs[:] to outputs[num_out_data: ]
   for (size_t i = params.num_out_data; i < outputs.size(); ++i) {
-    size_t j = i - params.num_out_data;
+    size_t j = params.func_var_locs[i - params.num_out_data];
     mxnet::CopyFromTo(func_inputs[j], &outputs[i]);
   }
 }
