@@ -155,6 +155,9 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
             result.update(item)
         return result
 
+    def _to_numpy_list(arrays):
+        return [x.asnumpy() for x in arrays]
+
     def _get_imperative_result():
         free_vars = [args["FreeVar" + str(i)].copy() for i, _ in enumerate(free_var_shapes)]
         loop_vars = [args["LoopVar" + str(i)].copy() for i, _ in enumerate(loop_var_shapes)]
@@ -178,7 +181,7 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
                 cat_out.backward(out_grads)
                 grads = [free_vars[i].grad for i, _ in enumerate(free_var_shapes)] \
                       + [loop_vars[i].grad for i, _ in enumerate(loop_var_shapes)]
-            return loop_result_nd, grads, out_grads, n_steps
+            return _to_numpy_list(loop_result_nd), _to_numpy_list(grads), out_grads, n_steps
 
     def _get_symbolic_result(out_grads, n_steps):
         free_syms = _create_vars(len(free_var_shapes), "FreeVar")
@@ -199,7 +202,7 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
             executor.backward(out_grads=out_grads)
             grads = [executor.grad_dict["FreeVar" + str(i)] for i, _ in enumerate(free_var_shapes)] \
                   + [executor.grad_dict["LoopVar" + str(i)] for i, _ in enumerate(loop_var_shapes)]
-        return loop_result_nd, grads
+        return _to_numpy_list(loop_result_nd), _to_numpy_list(grads)
 
     args = _merge_dict(
         _create_dict("FreeVar", free_var_shapes),
@@ -212,9 +215,9 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
     imp_outs, imp_grads, out_grads, n_steps = _get_imperative_result()
     sym_outs, sym_grads = _get_symbolic_result(out_grads, n_steps)
     for imp_out, sym_out in zip(imp_outs, sym_outs):
-        assert_almost_equal(imp_out.asnumpy(), sym_out.asnumpy())
+        assert_almost_equal(imp_out, sym_out)
     for imp_grad, sym_grad in zip(imp_grads, sym_grads):
-        assert_almost_equal(imp_grad.asnumpy(), sym_grad.asnumpy())
+        assert_almost_equal(imp_grad, sym_grad)
 
 
 def test_while_loop_for_foreach():

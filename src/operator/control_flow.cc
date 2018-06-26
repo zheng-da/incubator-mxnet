@@ -591,11 +591,7 @@ class WhileLoopState: public LoopState {
   static bool sync_in_out(const WhileLoopParam& params, std::vector<T> *in, std::vector<T> *out, std::function<bool(const T &)> is_empty) {
     for (int i = params.num_out_data; i < params.num_outputs; ++i) {
       // each out->at(i) is a params, loop_var
-      T &x = in->at(
-        params.func_input_locs[
-          params.func_var_locs[i - params.num_out_data]
-        ]
-      );
+      T &x = in->at(params.func_input_locs[params.func_var_locs[i - params.num_out_data]]);
       T &y = out->at(i);
       fill_value(x, y, is_empty(x), is_empty(y));
     }
@@ -684,7 +680,7 @@ static void WhileLoopComputeExCPU(const OpStatePtr& state_ptr,
       size_t j = params.func_var_locs[i - params.num_out_data];
       CHECK_EQ(func_inputs[j].shape(), func_outputs[i].shape());
       func_inputs[j] = func_outputs[i];
-      int k = state.oi_map[j];
+      int k = state.oi_map[i - params.num_out_data];
       if (k != -1) {
         // I actually don't need to update cond_inputs
         cond_inputs[k] = func_outputs[i];

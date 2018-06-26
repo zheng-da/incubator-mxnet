@@ -474,11 +474,13 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
             name_to_loop_vars = {sym.name: sym for sym in loop_vars}
             # other inputs to `graph` created by cut_graph
             name_to_cut_g_syms = {sym.list_outputs()[0]: sym for sym in _cut_subgraph(graph)}
+            # also we collect the mapping from var's name to var's loc in loop_vars
+            name_to_var_locs = {sym.name: i for i, sym in enumerate(loop_vars)}
             # collect arguments for each subgraph
-            input_locs = []     # results from the second step
-            var_locs = []       # results from the third step
+            input_locs = []                         # results from the second step
+            var_locs = [-1] * len(loop_vars)        # results from the third step
             for name in graph.list_inputs():
-                assert name in name_to_input_syms  # it should obviously hold
+                assert name in name_to_input_syms   # it should obviously hold
                 # name -> sym
                 if name in name_to_loop_vars:
                     sym = name_to_loop_vars[name]
@@ -495,8 +497,8 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
                     input_id_to_loc[id(sym)] = loc
                 input_locs.append(loc)
                 # do 3)
-                if name in name_to_loop_vars:
-                    var_locs.append(len(input_locs) - 1)
+                if name in name_to_var_locs:
+                    var_locs[name_to_var_locs[name]] = len(input_locs) - 1
             locs.append((input_locs, var_locs))
         return inputs, locs
     max_iterations = _to_python_scalar(max_iterations, int, "max_iteration")
@@ -515,6 +517,8 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
         _create_subgraph(loop_vars, _func_wrapper, name + "_func")
     # find symbols used in either cond_g or func_g
     input_syms, ((cond_input_locs, _), (func_input_locs, func_var_locs)) = _union_inputs(cond_g, func_g)
+    for loc in func_var_locs:
+        assert loc != -1
     result = symbol._internal._while_loop(
         # [cond, func_g, *input_syms]
         cond_g,
