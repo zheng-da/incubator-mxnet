@@ -745,6 +745,21 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
   state.Cleanup();
 }
 
+// TODO(Junru): delete helper func
+void _print_shape(const TShape &s) {
+  std::cout << "[";
+  for (auto i : s) {
+    std::cout << " " << i;
+  }
+  std::cout << " ]" << std::endl;
+}
+
+void _ps(const std::vector<TShape> &shapes) {
+  for (const TShape &s : shapes) {
+    _print_shape(s);
+  }
+}
+
 static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
                            std::vector<TShape> *in_shape,
                            std::vector<TShape> *out_shape) {
@@ -839,7 +854,11 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
   ShapeVector func_out_shape(params.num_outputs);
   auto sync_in_out = [&params, in_shape, out_shape]() {
     for (int i = params.num_out_data; i < params.num_outputs; ++i) {
-      TShape &in = (*in_shape)[params.func_input_locs[i - params.num_out_data]];
+      TShape &in = (*in_shape)[
+        params.func_input_locs[
+          params.func_var_locs[i - params.num_out_data]
+        ]
+      ];
       TShape &out = (*out_shape)[i];
       if (in == out) {
         // they are consistent, or both unassigned

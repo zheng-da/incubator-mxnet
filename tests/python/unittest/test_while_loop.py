@@ -173,8 +173,8 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
             loop_result_nd = [x * 2 for x in outputs] + [x * 3 for x in final_loop_vars]
             grads = []
             if is_train:
-                cat_out = mx.nd.concat(*[x.flatten() for x in loop_result_nd], dim=0)
-                out_grads = mx.nd.concat(*[x.flatten() for x in out_grads], dim=0)
+                cat_out = mx.nd.concat(*[x.reshape(-1) for x in loop_result_nd], dim=0)
+                out_grads = mx.nd.concat(*[x.reshape(-1) for x in out_grads], dim=0)
                 cat_out.backward(out_grads)
                 grads = [free_vars[i].grad for i, _ in enumerate(free_var_shapes)] \
                       + [loop_vars[i].grad for i, _ in enumerate(loop_var_shapes)]
@@ -184,8 +184,8 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
         free_syms = _create_vars(len(free_var_shapes), "FreeVar")
         loop_syms = _create_vars(len(loop_var_shapes), "LoopVar")
         outputs, final_loop_syms = mx.sym.contrib.while_loop(
-            cond=lambda _loop_vars: cond(_loop_vars, free_syms),
-            func=lambda _loop_vars: func(_loop_vars, free_syms),
+            cond=lambda *_loop_vars: cond(_loop_vars, free_syms),
+            func=lambda *_loop_vars: func(_loop_vars, free_syms),
             loop_vars=loop_syms,
             max_iterations=max_iterations,
         )
@@ -207,7 +207,7 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
     )
     if is_for:
         assert loop_var_shapes[0] == (1, )
-        loop_var_shapes[0] = mx.nd.array([1])
+        args["LoopVar0"] = mx.nd.array([1])
     out_grads = []
     imp_outs, imp_grads, out_grads, n_steps = _get_imperative_result()
     sym_outs, sym_grads = _get_symbolic_result(out_grads, n_steps)
@@ -223,36 +223,62 @@ def test_while_loop_for_foreach():
     def make_for_cond(length):
         return lambda loop, _: loop[0] < length
 
-    def step_1(loop, free):
-        """This simulates:
-        def compute(s, inputs, f_1, length):
-            outputs = []
-            for i in range(length):
-                s += inputs[i] * 2 + f_1
-                outputs.append(s)
-            return outputs, s
-        """
-        (i, s), (scanned, f_1, _) = loop, free
-        in_ = scanned.take(i)
-        out = in_ * 2 + s + f_1
-        return (out, (i + 1, out))
+    def case_1():
+        step_funcs = [
+            lambda in_, s, f_1: in_ * 2 + s + f_1,
+            lambda in_, s, f_1: in_ * 2 + f_1 + s,
+            lambda in_, s, f_1: s + in_ * 2 + f_1,
+            lambda in_, s, f_1: s + f_1 + in_ * 2,
+            lambda in_, s, f_1: f_1 + in_ * 2 + s,
+            lambda in_, s, f_1: f_1 + s + in_ * 2,
+            lambda in_, s, f_1: 2 * in_ + s + f_1,
+            lambda in_, s, f_1: 2 * in_ + f_1 + s,
+            lambda in_, s, f_1: s + 2 * in_ + f_1,
+            lambda in_, s, f_1: s + f_1 + 2 * in_,
+            lambda in_, s, f_1: f_1 + 2 * in_ + s,
+            lambda in_, s, f_1: f_1 + s + 2 * in_,
+        ]
+        def make_step(step_func):
+            """This simulates:
+            def compute(s, inputs, f_1, length):
+                outputs = []
+                for i in range(length):
+                    s += inputs[i] * 2 + f_1
+                    outputs.append(s)
+                return outputs, s
+            """
+            def step(loop, free):
+                (i, s), (scanned, f_1, _) = loop, free
+                # print
+                # print "New iteration:"
+                # print "    i =", i.shape, i
+                # print "    s =", s.shape, s
+                # print "    scanned =", scanned.shape, scanned
+                # print "    f_1 =", f_1.shape, f_1
+                in_ = scanned.take(i).squeeze(axis=0)
+                out = step_func(in_, s, f_1)
+                return (out, (i + 1, out))
+            return step
 
-    _verify_while_loop(
-        cond=make_for_cond(length=3),
-        func=step_1,
-        loop_var_shapes=[
-            (1, ),   # i
-            (2, ),   # s
-        ],
-        free_var_shapes=[
-            (3, 2),         # scanned
-            (2, ),          # f_1
-            (3, 4, 5, 6),   # f_2, unused
-        ],
-        is_train=True,
-        max_iterations=1000,
-        is_for=True,
-    )
+        params = {
+            "cond": make_for_cond(length=3),
+            "loop_var_shapes": [
+                (1, ),   # i
+                (2, ),   # s
+            ],
+            "free_var_shapes": [
+                (3, 2),         # scanned
+                (2, ),          # f_1
+                (3, 4, 5, 6),   # f_2, unused
+            ],
+            "is_train": True,
+            "max_iterations": 1000,
+            "is_for": True,
+        }
+        for step_func in step_funcs:
+            _verify_while_loop(func=make_step(step_func), **params)
+
+    case_1()
 
 
 if __name__ == '__main__':
