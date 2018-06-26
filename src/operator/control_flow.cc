@@ -601,7 +601,6 @@ static void WhileLoopComputeExCPU(const OpStatePtr& state_ptr,
   CHECK_EQ(inputs.size() + 2U, (size_t) params.num_args);
   CHECK_EQ(outputs.size(), (size_t) params.num_outputs);
   CHECK_EQ(outputs.size(), req.size());
-  CHECK_EQ(inputs.size() + params.num_out_data, outputs.size());
   for (size_t i = 0; i < (size_t) params.num_out_data; i++)
     CHECK_EQ(params.max_iterations, outputs[i].shape()[0]);
   for (const auto &arr : outputs)
@@ -672,7 +671,6 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
   // sanity checks
   CHECK_EQ(inputs.size(), (size_t) params.num_outputs);
   CHECK_EQ(outputs.size() + 2U, (size_t) params.num_args);
-  CHECK_EQ(outputs.size() + params.num_out_data, inputs.size());
   for (auto x : req) {
     CHECK_NE(x, kWriteInplace);
   }
