@@ -223,7 +223,7 @@ def test_while_loop_for_foreach():
     def make_for_cond(length):
         return lambda loop, _: loop[0] < length
 
-    def case_1():
+    def case_1(**params):
         step_funcs = [
             lambda in_, s, f_1: in_ * 2 + s + f_1,
             lambda in_, s, f_1: in_ * 2 + f_1 + s,
@@ -238,7 +238,7 @@ def test_while_loop_for_foreach():
             lambda in_, s, f_1: f_1 + 2 * in_ + s,
             lambda in_, s, f_1: f_1 + s + 2 * in_,
         ]
-        def make_step(step_func):
+        def make_func(step_func):
             """This simulates:
             def compute(s, inputs, f_1, length):
                 outputs = []
@@ -249,36 +249,32 @@ def test_while_loop_for_foreach():
             """
             def step(loop, free):
                 (i, s), (scanned, f_1, _) = loop, free
-                # print
-                # print "New iteration:"
-                # print "    i =", i.shape, i
-                # print "    s =", s.shape, s
-                # print "    scanned =", scanned.shape, scanned
-                # print "    f_1 =", f_1.shape, f_1
                 in_ = scanned.take(i).squeeze(axis=0)
                 out = step_func(in_, s, f_1)
                 return (out, (i + 1, out))
             return step
-
-        params = {
-            "cond": make_for_cond(length=3),
-            "loop_var_shapes": [
-                (1, ),   # i
-                (2, ),   # s
-            ],
-            "free_var_shapes": [
-                (3, 2),         # scanned
-                (2, ),          # f_1
-                (3, 4, 5, 6),   # f_2, unused
-            ],
-            "is_train": True,
-            "max_iterations": 1000,
-            "is_for": True,
-        }
-        for step_func in step_funcs:
-            _verify_while_loop(func=make_step(step_func), **params)
-
-    case_1()
+        for is_train in [False, True]:
+            for step_func in step_funcs:
+                _verify_while_loop(
+                    func=make_func(step_func),
+                    max_iterations=1000,
+                    is_train=is_train,
+                    is_for=True,
+                    **params
+                )
+    # Case 1.1
+    case_1(
+        cond=make_for_cond(length=3),
+        loop_var_shapes=[
+            (1, ),          # i
+            (2, ),          # s
+        ],
+        free_var_shapes=[
+            (3, 2),         # scanned
+            (2, ),          # f_1
+            (3, 4, 5, 6),   # f_2, unused
+        ],
+    )
 
 
 if __name__ == '__main__':
