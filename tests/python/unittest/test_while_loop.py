@@ -189,7 +189,7 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
             loop_vars=loop_syms,
             max_iterations=max_iterations,
         )
-        outputs = outputs[ : n_steps]
+        outputs = [x.slice_axis(axis=0, begin=0, end=n_steps) for x in outputs]
         loop_result_sym = [x * 2 for x in outputs] + [x * 3 for x in final_loop_syms]
         loop_result_sym = mx.sym.Group(loop_result_sym)
         executor = loop_result_sym.bind(ctx=default_context(), args=args)
@@ -207,7 +207,7 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
     )
     if is_for:
         assert loop_var_shapes[0] == (1, )
-        args["LoopVar0"] = mx.nd.array([1])
+        args["LoopVar0"] = mx.nd.array([0])
     out_grads = []
     imp_outs, imp_grads, out_grads, n_steps = _get_imperative_result()
     sym_outs, sym_grads = _get_symbolic_result(out_grads, n_steps)
