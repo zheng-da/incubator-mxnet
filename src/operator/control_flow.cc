@@ -561,7 +561,6 @@ class WhileLoopState: public LoopState {
   static bool is_type_udf(const int &x) {
     return x == -1;
   }
-
   template <typename T>
   static bool fill_value(T &x, T &y, bool x_empty, bool y_empty) {
     if (x == y || (x_empty && y_empty)) {
@@ -895,11 +894,11 @@ static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
   };
   ShapeVector cond_out_shape{TShape(1U)}; // this means: [(1, )]
   ShapeVector func_out_shape(params.num_outputs);
-  WhileLoopState::sync_in_out(params, in_shape, out_shape, is_udf);
+  CHECK(WhileLoopState::sync_in_out(params, in_shape, out_shape, is_udf));
   bool succ_0 = infer_subg(attrs.subgraphs[0], &cond_out_shape, params.cond_input_locs, 0, false);
-  WhileLoopState::sync_in_out(params, in_shape, out_shape, is_udf);
+  CHECK(WhileLoopState::sync_in_out(params, in_shape, out_shape, is_udf));
   bool succ_1 = infer_subg(attrs.subgraphs[1], &func_out_shape, params.func_input_locs, params.num_out_data, true);
-  WhileLoopState::sync_in_out(params, in_shape, out_shape, is_udf);
+  CHECK(WhileLoopState::sync_in_out(params, in_shape, out_shape, is_udf));
   return succ_0 && succ_1;
 }
 
@@ -916,13 +915,13 @@ static bool WhileLoopType(const nnvm::NodeAttrs& attrs,
   WhileLoopState::extract_by_loc(*in_type, params.cond_input_locs, &cond_in_type);
   WhileLoopState::extract_by_loc(*in_type, params.func_input_locs, &func_in_type);
   std::vector<int> cond_out_type = {0};
-  WhileLoopState::sync_in_out(params, in_type, out_type, is_udf);
+  CHECK(WhileLoopState::sync_in_out(params, in_type, out_type, is_udf));
   bool succ_0 = InferSubgraphDataType(*attrs.subgraphs[0], &cond_in_type, &cond_out_type);
-  WhileLoopState::sync_in_out(params, in_type, out_type, is_udf);
-  WhileLoopState::sync_in_in(params.cond_input_locs, in_type, &cond_in_type, is_udf);
+  CHECK(WhileLoopState::sync_in_out(params, in_type, out_type, is_udf));
+  CHECK(WhileLoopState::sync_in_in(params.cond_input_locs, in_type, &cond_in_type, is_udf));
   bool succ_1 = InferSubgraphDataType(*attrs.subgraphs[1], &func_in_type, out_type);
-  WhileLoopState::sync_in_out(params, in_type, out_type, is_udf);
-  WhileLoopState::sync_in_in(params.func_input_locs, in_type, &func_in_type, is_udf);
+  CHECK(WhileLoopState::sync_in_out(params, in_type, out_type, is_udf));
+  CHECK(WhileLoopState::sync_in_in(params.func_input_locs, in_type, &func_in_type, is_udf));
   return succ_0 && succ_1;
 }
 
@@ -945,13 +944,13 @@ static bool WhileLoopStorageType(const nnvm::NodeAttrs& attrs,
   DispatchMode cond_mode = DispatchMode::kUndefined;
   DispatchMode func_mode = DispatchMode::kUndefined;
   *dispatch_mode = DispatchMode::kFComputeEx;
-  WhileLoopState::sync_in_out(params, in_attrs, out_attrs, is_udf);
+  CHECK(WhileLoopState::sync_in_out(params, in_attrs, out_attrs, is_udf));
   bool succ_0 = InferSubgraphStorage(*attrs.subgraphs[0], dev_mask, &cond_mode, &cond_in_attrs, &cond_out_attrs);
-  WhileLoopState::sync_in_out(params, in_attrs, out_attrs, is_udf);
-  WhileLoopState::sync_in_in(params.cond_input_locs, in_attrs, &cond_in_attrs, is_udf);
+  CHECK(WhileLoopState::sync_in_out(params, in_attrs, out_attrs, is_udf));
+  CHECK(WhileLoopState::sync_in_in(params.cond_input_locs, in_attrs, &cond_in_attrs, is_udf));
   bool succ_1 = InferSubgraphStorage(*attrs.subgraphs[1], dev_mask, &func_mode, &func_in_attrs, out_attrs);
-  WhileLoopState::sync_in_out(params, in_attrs, out_attrs, is_udf);
-  WhileLoopState::sync_in_in(params.func_input_locs, in_attrs, &func_in_attrs, is_udf);
+  CHECK(WhileLoopState::sync_in_out(params, in_attrs, out_attrs, is_udf));
+  CHECK(WhileLoopState::sync_in_in(params.func_input_locs, in_attrs, &func_in_attrs, is_udf));
   return succ_0 && succ_1;
 }
 
