@@ -156,14 +156,16 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
         return result
 
     def _to_numpy_list(arrays):
-        return [x.asnumpy() for x in arrays]
+        return [x.asnumpy() for x in arrays if x is not None]
 
     def _get_imperative_result():
         free_vars = [args["FreeVar" + str(i)].copy() for i, _ in enumerate(free_var_shapes)]
         loop_vars = [args["LoopVar" + str(i)].copy() for i, _ in enumerate(loop_var_shapes)]
-        for var in free_vars + loop_vars:
-            var.attach_grad()
-        with mx.autograd.record():
+        loop_var_start = int(is_for)
+        if is_train:
+            for var in free_vars + loop_vars[loop_var_start: ]:
+                var.attach_grad()
+        with mx.autograd.record(train_mode=is_train):
             outputs, final_loop_vars = mx.nd.contrib.while_loop(
                 cond=lambda *_loop_vars: cond(_loop_vars, free_vars),
                 func=lambda *_loop_vars: func(_loop_vars, free_vars),
@@ -177,13 +179,19 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
             grads = []
             if is_train:
                 cat_out = mx.nd.concat(*[x.reshape(-1) for x in loop_result_nd], dim=0)
-                out_grads = mx.nd.concat(*[x.reshape(-1) for x in out_grads], dim=0)
-                cat_out.backward(out_grads)
+                cat_out.backward(out_grad=mx.nd.concat(*[x.reshape(-1) for x in out_grads], dim=0))
                 grads = [free_vars[i].grad for i, _ in enumerate(free_var_shapes)] \
                       + [loop_vars[i].grad for i, _ in enumerate(loop_var_shapes)]
             return _to_numpy_list(loop_result_nd), _to_numpy_list(grads), out_grads, n_steps
 
     def _get_symbolic_result(out_grads, n_steps):
+
+        def _copy_args_dict(name_list):
+            return {name: args[name].copy() for name in name_list}
+
+        def _zeros_like_dict(name_list):
+            return {name: mx.nd.zeros_like(args[name]) for name in name_list}
+
         free_syms = _create_vars(len(free_var_shapes), "FreeVar")
         loop_syms = _create_vars(len(loop_var_shapes), "LoopVar")
         outputs, final_loop_syms = mx.sym.contrib.while_loop(
@@ -192,16 +200,28 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
             loop_vars=loop_syms,
             max_iterations=max_iterations,
         )
-        outputs = [x.slice_axis(axis=0, begin=0, end=n_steps) for x in outputs]
+        if n_steps == 0:
+            outputs = []
+        else:
+            outputs = [x.slice_axis(axis=0, begin=0, end=n_steps) for x in outputs]
         loop_result_sym = [x * 2 for x in outputs] + [x * 3 for x in final_loop_syms]
         loop_result_sym = mx.sym.Group(loop_result_sym)
-        executor = loop_result_sym.bind(ctx=default_context(), args=args)
+
+        loop_var_start = int(is_for)
+        args_names = ["FreeVar" + str(i) for i, _ in enumerate(free_var_shapes)] \
+                   + ["LoopVar" + str(i) for i, _ in enumerate(loop_var_shapes) if i >= loop_var_start]
+        args_grad = None if not is_train else _zeros_like_dict(x for x in args_names)
+        executor = loop_result_sym.bind(
+            ctx=default_context(),
+            args=_copy_args_dict(loop_result_sym.list_inputs()),
+            args_grad=args_grad,
+        )
         loop_result_nd = executor.forward(is_train=is_train)
         grads = []
         if is_train:
             executor.backward(out_grads=out_grads)
-            grads = [executor.grad_dict["FreeVar" + str(i)] for i, _ in enumerate(free_var_shapes)] \
-                  + [executor.grad_dict["LoopVar" + str(i)] for i, _ in enumerate(loop_var_shapes)]
+            grads = [executor.grad_dict.get("FreeVar" + str(i), None) for i, _ in enumerate(free_var_shapes)] \
+                  + [executor.grad_dict.get("LoopVar" + str(i), None) for i, _ in enumerate(loop_var_shapes)]
         return _to_numpy_list(loop_result_nd), _to_numpy_list(grads)
 
     args = _merge_dict(
@@ -221,12 +241,53 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
 
 
 def test_while_loop_for_foreach():
-    """Test while loops exported from test_foreach
-    """
+
+    def make_true_cond():
+        return lambda loop_vars, _: (loop_vars[0] < 1e9).prod()
+
+    def make_false_cond():
+        return lambda loop_vars, _: (loop_vars[0] > 1e9).prod()
+
     def make_for_cond(length):
-        return lambda loop, _: loop[0] < length
+        return lambda loop_vars, _: loop_vars[0] < length
 
     def case_1(**params):
+        step_funcs = [
+            lambda a, b, s: a * 1.5 + b * 2.5 - s * 3.5,
+            lambda a, b, s: a * 1.5 - s * 3.5 + b * 2.5,
+            lambda a, b, s: b * 2.5 + a * 1.5 - s * 3.5,
+            lambda a, b, s: b * 2.5 - s * 3.5 + a * 1.5,
+            lambda a, b, s: s * -3.5 + a * 1.5 + b * 2.5,
+            lambda a, b, s: s * -3.5 + b * 2.5 + a * 1.5,
+            lambda a, b, s: a * 2.5 * b + s * 0.3,
+            lambda a, b, s: b * 2.5 * a + s * 0.3,
+            lambda a, b, s: 2.5 * a * b + s * 0.3,
+            lambda a, b, s: b * a * 2.5 + s * 0.3,
+            lambda a, b, s: 2.5 * b * a + s * 0.3,
+            lambda a, b, s: b * a * 2.5 + s * 0.3,
+            lambda a, b, s: s * 0.3 + a * 2.5 * b,
+            lambda a, b, s: s * 0.3 + b * 2.5 * a,
+            lambda a, b, s: s * 0.3 + 2.5 * a * b,
+            lambda a, b, s: s * 0.3 + b * a * 2.5,
+            lambda a, b, s: s * 0.3 + 2.5 * b * a,
+            lambda a, b, s: s * 0.3 + b * a * 2.5,
+        ]
+        def make_func(step_func):
+            def step(loop, free):
+                (s, ), (a, b) = loop, free
+                out = step_func(a, b, s)
+                return (out, out)
+            return step
+        for is_train in [True, False]:
+            for step_func in step_funcs:
+                _verify_while_loop(
+                    func=make_func(step_func),
+                    is_train=is_train,
+                    is_for=False,
+                    **params
+                )
+
+    def case_2(**params):
         step_funcs = [
             lambda in_, s, f_1: in_ * 2 + s + f_1,
             lambda in_, s, f_1: in_ * 2 + f_1 + s,
@@ -265,8 +326,44 @@ def test_while_loop_for_foreach():
                     is_for=True,
                     **params
                 )
-    # Case 1.1
+    # Case 1.1.*
     case_1(
+        cond=make_true_cond(),
+        loop_var_shapes=[
+            (1, ),          # s
+        ],
+        free_var_shapes=[
+            (1, ),          # a
+            (1, ),          # b
+        ],
+        max_iterations=100
+    )
+    # Case 1.2.*
+    case_1(
+        cond=make_true_cond(),
+        loop_var_shapes=[
+            (2, 3, 4),      # s
+        ],
+        free_var_shapes=[
+            (2, 3, 4),      # a
+            (2, 3, 4),      # b
+        ],
+        max_iterations=31
+    )
+    # Case 1.3.*
+    case_1(
+        cond=make_false_cond(),
+        loop_var_shapes=[
+            (2, 3, 4),      # s
+        ],
+        free_var_shapes=[
+            (2, 3, 4),      # a
+            (2, 3, 4),      # b
+        ],
+        max_iterations=1
+    )
+    # Case 2.1
+    case_2(
         cond=make_for_cond(length=3),
         loop_var_shapes=[
             (1, ),          # i

@@ -694,16 +694,31 @@ static void WhileLoopComputeExCPU(const OpStatePtr& state_ptr,
   // the final_loop_vars is the same as loop_vars, which are also stored in func_inputs
   // therefore, we copy func_inputs[:] to outputs[num_out_data: ]
   for (size_t i = params.num_out_data; i < outputs.size(); ++i) {
-    size_t j = params.func_var_locs[i - params.num_out_data];
+    size_t j = params.func_var_locs[i - params.num_out_data];  
     mxnet::CopyFromTo(func_inputs[j], &outputs[i]);
+  }
+}
+
+// TODO(Junru): delete helper func
+void _print_shape(const TShape &s) {
+  std::cout << "[";
+  for (auto i : s) {
+    std::cout << " " << i;
+  }
+  std::cout << " ]" << std::endl;
+}
+
+void _ps(const std::vector<TShape> &shapes) {
+  for (const TShape &s : shapes) {
+    _print_shape(s);
   }
 }
 
 static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
                                       const OpContext& ctx,
                                       const std::vector<NDArray>& inputs,
-                                      const std::vector<OpReqType>& req,
-                                      const std::vector<NDArray>& outputs) {
+                                      const std::vector<OpReqType>& _req,
+                                      const std::vector<NDArray>& _outputs) {
   // inputs are dl / df(x)
   // outputs are dl / dx
   // where f is the current function,
@@ -712,17 +727,17 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
   WhileLoopState &state = state_ptr.get_state<WhileLoopState>();
   const WhileLoopParam& params = state.params;
   // sanity checks
-  CHECK_EQ(inputs.size(), (size_t) params.num_outputs);
-  CHECK_EQ(outputs.size() + 2U, (size_t) params.num_args);
-  for (auto x : req) {
+  CHECK_EQ(_outputs.size() + 2U, (size_t) params.num_args);
+  for (auto x : _req) {
     CHECK_NE(x, kWriteInplace);
   }
-  for (auto x: outputs) {
+  for (auto x: _outputs) {
     CHECK_EQ(x.storage_type(), kDefaultStorage) << "The while_loop operator doesn't support the sparse format";
   }
-  for (size_t i = 1; i < params.func_var_locs.ndim(); ++i) {
-    CHECK_LT(params.func_var_locs[i - 1], params.func_var_locs[i]);
-  }
+  std::vector<NDArray> outputs;
+  std::vector<OpReqType> req;
+  WhileLoopState::extract_by_loc(_outputs, params.func_input_locs, &outputs);
+  WhileLoopState::extract_by_loc(_req, params.func_input_locs, &req);
   // collect var_locs and out_locs, positions other than var_locs are out_locs, i.e.
   // [0, var_locs[0])
   // (var_locs[1], var_locs[2]),
@@ -731,11 +746,13 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
   // (var_locs[-2], var_locs[-1] = params.num_args - 2)
   std::vector<dim_t> var_locs(params.func_var_locs.begin(), params.func_var_locs.end());
   var_locs.push_back((dim_t) params.num_args - 2U);
-
+  sort(var_locs.begin(), var_locs.end());
   // vectors for the backward loop
-  std::vector<NDArray> ograds(inputs);
+  std::vector<NDArray> ograds(params.num_outputs);
   std::vector<NDArray> igrads(outputs.size());
   std::vector<OpReqType> iter_req(req.size());
+  for (int i = params.num_out_data; i < params.num_outputs; i++)
+    ograds[i] = inputs[i];
   for (int step = (int) state.n_iterations - 1; step >= 0; --step) {
     // ograds[ : num_out_data] = inputs[ : num_out_data][step]
     // ograds[num_out_data: ] is maintained in the end of each loop
@@ -762,7 +779,7 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
                       ? req[i]
                       : kAddTo;
         }
-        if (i < (size_t) params.num_args) {
+        if (i < (size_t) params.num_args - 2U) {
           // a var
           igrads[i] = (step == 0)
                     ? outputs[i]
@@ -778,27 +795,12 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
       }
     }
     state.Backward(step, ograds, iter_req, igrads);
-    for (size_t i = params.num_out_data; i < (size_t) params.num_args; ++i) {
-      size_t loc = params.func_var_locs[i - params.num_out_data];
-      ograds[i] = igrads[loc];
+    for (int i = params.num_out_data; i < params.num_outputs; ++i) {
+      size_t j = params.func_var_locs[i - params.num_out_data];
+      ograds[i] = igrads[j];
     }
   }
   state.Cleanup();
-}
-
-// TODO(Junru): delete helper func
-void _print_shape(const TShape &s) {
-  std::cout << "[";
-  for (auto i : s) {
-    std::cout << " " << i;
-  }
-  std::cout << " ]" << std::endl;
-}
-
-void _ps(const std::vector<TShape> &shapes) {
-  for (const TShape &s : shapes) {
-    _print_shape(s);
-  }
 }
 
 static bool WhileLoopShape(const nnvm::NodeAttrs& attrs,
