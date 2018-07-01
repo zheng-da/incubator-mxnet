@@ -633,6 +633,7 @@ static void WhileLoopComputeExCPU(const OpStatePtr& state_ptr,
   // [0: num_out_data) are outputs at each step.
   // [num_out_data: ) are new_loop_vars
   // TODO(Junru): avoid dynamic NDArray allocation
+  std::cout << "Forward" << std::endl;
   WhileLoopState &state = state_ptr.get_state<WhileLoopState>();
   const WhileLoopParam& params = state.params;
   // a helper function, converting std::vector<NDArray> to std::vector<NDArray*>
@@ -719,6 +720,7 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
                                       const std::vector<NDArray>& inputs,
                                       const std::vector<OpReqType>& _req,
                                       const std::vector<NDArray>& _outputs) {
+  std::cout << "Backward" << std::endl;
   // inputs are dl / df(x)
   // outputs are dl / dx
   // where f is the current function,
@@ -775,18 +777,32 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
         for ( ; i < loc; ++i) {
           // locs other that var_locs
           igrads[i] = outputs[i];
-          iter_req[i] = (step + 1 == (int) state.n_iterations)
-                      ? req[i]
-                      : kAddTo;
+          if (req[i] == kNullOp) {
+            iter_req[i] = kNullOp;
+          }
+          else {
+            iter_req[i] = (step + 1 == (int) state.n_iterations)
+                        ? req[i]
+                        : kAddTo;
+          }
         }
         if (i < (size_t) params.num_args - 2U) {
           // a var
-          igrads[i] = (step == 0)
-                    ? outputs[i]
-                    : NDArray(outputs[i].shape(), outputs[i].ctx(), true, outputs[i].dtype());
-          iter_req[i] = (step == 0)
-                      ? req[i]
-                      : kWriteTo;
+          if (req[i] == kNullOp) {
+            // igrads[i] = outputs[i];
+            igrads[i] = (step == 0)
+                      ? outputs[i]
+                      : NDArray(outputs[i].shape(), outputs[i].ctx(), true, outputs[i].dtype());
+            iter_req[i] = kNullOp;
+          }
+          else {
+            igrads[i] = (step == 0)
+                      ? outputs[i]
+                      : NDArray(outputs[i].shape(), outputs[i].ctx(), true, outputs[i].dtype());
+            iter_req[i] = (step == 0)
+                        ? req[i]
+                        : kWriteTo;
+          }
           ++i;
         }
         else {

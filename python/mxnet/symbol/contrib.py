@@ -518,6 +518,7 @@ def while_loop(cond, func, loop_vars, max_iterations, name="while_loop"):
     # find symbols used in either cond_g or func_g
     input_syms, ((cond_input_locs, _), (func_input_locs, func_var_locs)) = _union_inputs(cond_g, func_g)
     for loc in func_var_locs:
+        # TODO(Junru): re-examine this
         assert loc != -1
     result = symbol._internal._while_loop(
         # [cond, func_g, *input_syms]

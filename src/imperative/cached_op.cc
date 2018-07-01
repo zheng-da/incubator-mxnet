@@ -327,8 +327,13 @@ void SetBackwardInputEid(const std::vector<uint32_t>& bwd_in_dep,
                          const nnvm::IndexedGraph& idx,
                          std::vector<uint32_t> *bwd_input_eid) {
   for (const auto& i : bwd_ograd_dep) {
-    auto eid = idx.entry_id(ograd_entries[i]);
-    bwd_input_eid->push_back(eid);
+    auto ograd = ograd_entries[i];
+    if (idx.exist(ograd.node.get())) {
+      bwd_input_eid->push_back(idx.entry_id(ograd));
+    }
+    else {
+      bwd_input_eid->push_back(std::numeric_limits<uint32_t>::max());
+    }
   }
   for (const auto& i : bwd_in_dep) {
     auto eid = idx.entry_id(idx.input_nodes()[i], 0);
@@ -381,7 +386,9 @@ bool CachedOp::SetBackwardGraph(
     for (size_t i = num_forward_nodes; i < idx.num_nodes(); ++i) {
       for (const auto& j : idx[i].inputs) ++ref_count[idx.entry_id(j)];
     }
-    for (size_t i = 0; i < inputs.size(); ++i) ++ref_count[info->bwd_input_eid[i]];
+    for (size_t i = 0; i < inputs.size(); ++i) 
+      if (info->bwd_input_eid[i] != std::numeric_limits<uint32_t>::max())
+        ++ref_count[info->bwd_input_eid[i]];
     for (const auto& i : idx.outputs()) ++ref_count[idx.entry_id(i)];
     g.attrs["backward_ref_count"] = std::make_shared<dmlc::any>(std::move(ref_count));
   }
@@ -394,6 +401,9 @@ bool CachedOp::SetBackwardGraph(
   stypes.resize(idx.num_node_entries(), -1);
 
   for (size_t i = 0; i < inputs.size(); ++i) {
+    if (info->bwd_input_eid[i] == std::numeric_limits<uint32_t>::max()) {
+      continue;
+    }
     shapes[info->bwd_input_eid[i]] = inputs[i]->shape();
     dtypes[info->bwd_input_eid[i]] = inputs[i]->dtype();
     stypes[info->bwd_input_eid[i]] = inputs[i]->storage_type();
@@ -896,6 +906,9 @@ void CachedOp::DynamicBackward(
   arrays.reserve(buff.size());
   for (size_t i = 0; i < buff.size(); ++i) arrays.push_back(&buff[i]);
   for (size_t i = 0; i < inputs.size(); ++i) {
+    if (runtime.info.bwd_input_eid[i] == std::numeric_limits<uint32_t>::max()) {
+      continue;
+    }
     arrays[runtime.info.bwd_input_eid[i]] = inputs[i];
   }
   for (size_t i = 0, j = num_forward_outputs; i < reqs.size(); ++i) {
@@ -1021,7 +1034,15 @@ void CachedOp::StaticBackward(
     StaticInitExec(state_ptr, true, true);
   }
 
-  StaticRunOps(default_ctx, g, state_ptr, arrays, num_forward_nodes, idx.num_nodes());
+  for (size_t i = 0; i < state.info.bwd_input_eid.size(); ++i) {
+    auto eid = state.info.bwd_input_eid[i];
+    if (eid == std::numeric_limits<uint32_t>::max()) {
+      continue;
+    }
+    if (state.dynamic_entries[eid]) state.arrays[eid] = inputs[i];
+  }
+
+  StaticRunOps(default_ctx, g, state_ptr, num_forward_nodes, idx.num_nodes());
 }
 
 void CachedOp::Backward(
@@ -1098,6 +1119,9 @@ bool CachedOp::BackwardStorageType(const nnvm::NodeAttrs& attrs,
   // Prepare stypes and contexts based on inputs
   StorageTypeVector stypes(idx.num_node_entries(), -1);
   for (size_t i = 0; i < in_attrs->size(); ++i) {
+    if (bwd_input_eid[i] == std::numeric_limits<uint32_t>::max()) {
+      continue;
+    }
     stypes[bwd_input_eid[i]] = in_attrs->at(i);
   }
   // Some out_attr is known ahead of time (e.g. the grad stype is given by users).
