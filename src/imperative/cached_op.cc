@@ -984,6 +984,9 @@ void CachedOp::StaticBackward(
   auto arrays = state.arrays;
   for (size_t i = 0; i < state.info.bwd_input_eid.size(); ++i) {
     auto eid = state.info.bwd_input_eid[i];
+    if (eid == std::numeric_limits<uint32_t>::max()) {
+      continue;
+    }
     if (state.dynamic_entries[eid]) arrays[eid] = inputs[i];
   }
 
@@ -1034,15 +1037,7 @@ void CachedOp::StaticBackward(
     StaticInitExec(state_ptr, true, true);
   }
 
-  for (size_t i = 0; i < state.info.bwd_input_eid.size(); ++i) {
-    auto eid = state.info.bwd_input_eid[i];
-    if (eid == std::numeric_limits<uint32_t>::max()) {
-      continue;
-    }
-    if (state.dynamic_entries[eid]) state.arrays[eid] = inputs[i];
-  }
-
-  StaticRunOps(default_ctx, g, state_ptr, num_forward_nodes, idx.num_nodes());
+  StaticRunOps(default_ctx, g, state_ptr, arrays, num_forward_nodes, idx.num_nodes());
 }
 
 void CachedOp::Backward(
