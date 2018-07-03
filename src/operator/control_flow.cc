@@ -728,6 +728,14 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
   // TODO(Junru): avoid dynamic NDArray allocation
   WhileLoopState &state = state_ptr.get_state<WhileLoopState>();
   const WhileLoopParam& params = state.params;
+  std::cout << "input shape:" << std::endl;
+  for (auto x: inputs) {
+    _print_shape(x.shape());
+  }
+  std::cout << "output shape:" << std::endl;
+  for (auto x: _outputs) {
+    _print_shape(x.shape());
+  }
   // sanity checks
   CHECK_EQ(_outputs.size() + 2U, (size_t) params.num_args);
   for (auto x : _req) {
@@ -756,6 +764,7 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
   for (int i = params.num_out_data; i < params.num_outputs; i++)
     ograds[i] = inputs[i];
   for (int step = (int) state.n_iterations - 1; step >= 0; --step) {
+    std::cout << "Step " << step << std::endl;
     // ograds[ : num_out_data] = inputs[ : num_out_data][step]
     // ograds[num_out_data: ] is maintained in the end of each loop
     std::transform(std::begin(inputs),
@@ -777,32 +786,18 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
         for ( ; i < loc; ++i) {
           // locs other that var_locs
           igrads[i] = outputs[i];
-          if (req[i] == kNullOp) {
-            iter_req[i] = kNullOp;
-          }
-          else {
-            iter_req[i] = (step + 1 == (int) state.n_iterations)
-                        ? req[i]
-                        : kAddTo;
-          }
+          iter_req[i] = (step + 1 == (int) state.n_iterations || req[i] == kNullOp)
+                      ? req[i]
+                      : kAddTo;
         }
         if (i < (size_t) params.num_args - 2U) {
           // a var
-          if (req[i] == kNullOp) {
-            // igrads[i] = outputs[i];
-            igrads[i] = (step == 0)
-                      ? outputs[i]
-                      : NDArray(outputs[i].shape(), outputs[i].ctx(), true, outputs[i].dtype());
-            iter_req[i] = kNullOp;
-          }
-          else {
-            igrads[i] = (step == 0)
-                      ? outputs[i]
-                      : NDArray(outputs[i].shape(), outputs[i].ctx(), true, outputs[i].dtype());
-            iter_req[i] = (step == 0)
-                        ? req[i]
-                        : kWriteTo;
-          }
+          igrads[i] = (step == 0)
+                    ? outputs[i]
+                    : NDArray(outputs[i].shape(), outputs[i].ctx(), true, outputs[i].dtype());
+          iter_req[i] = (step == 0 || req[i] == kNullOp)
+                      ? req[i]
+                      : kWriteTo;
           ++i;
         }
         else {
@@ -811,6 +806,26 @@ static void WhileLoopGradComputeExCPU(const OpStatePtr& state_ptr,
       }
     }
     state.Backward(step, ograds, iter_req, igrads);
+    for (auto grad: igrads) {
+      _print_shape(grad.shape());
+      // print_scalar(grad);
+    }
+    for (auto &x: iter_req) {
+      if (x == kNullOp) {
+        std::cout << "kNullOp ";
+      }
+      else if (x == kAddTo) {
+        std::cout << "kAddTo ";
+        // x = kWriteTo;
+        // std::cout << "kWriteTo ";
+      }
+      else if (x == kWriteTo) {
+        std::cout << "kWriteTo ";
+      }
+    }
+    std::cout << std::endl;
+    // print_scalar(igrads[1]);
+    // print_scalar(igrads[2]);
     for (int i = params.num_out_data; i < params.num_outputs; ++i) {
       size_t j = params.func_var_locs[i - params.num_out_data];
       ograds[i] = igrads[j];

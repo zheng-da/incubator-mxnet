@@ -22,7 +22,43 @@
 #include "../imperative/imperative_utils.h"
 
 namespace mxnet {
+
 namespace op {
+
+std::string shape_to_str(const nnvm::TShape &shape) {
+  std::ostringstream os;
+  os << "Shape[";
+  for (auto i : shape) {
+    os << " " << i;
+  }
+  os << " ]";
+  return os.str();
+}
+
+template <typename T>
+std::string _nd_to_str(const NDArray &a) {
+  std::vector<T> data(a.shape().Size());
+  a.SyncCopyToCPU(data.data(), a.shape().Size());
+  std::ostringstream os;
+  os << "NDArray[";
+  for (auto i : data) {
+    os << " " << i;
+  }
+  os << " ]";
+  return os.str();
+}
+
+std::string nd_to_str(const NDArray &a) {
+  if (a.is_none()) {
+    return "NDArray[None]";
+  }
+  MSHADOW_TYPE_SWITCH(a.dtype(), DType, {
+    std::string result = _nd_to_str<DType>(a);
+    return result;
+  });
+  return "ERROR!";
+}
+
 
 bool InferSubgraphDataType(const nnvm::Symbol &subgraph,
                            std::vector<int> *in_types,
@@ -241,12 +277,57 @@ void LoopState::Backward(int iter_no,
     outputs.push_back(&igrad_bufs[i]);
   CHECK_EQ(outputs.size(), op->num_inputs());
   auto state = all_states[iter_no];
-  op->Backward(false, state, inputs, req, outputs);
+  std::vector<OpReqType> new_req(req);
+  if (iter_no == 0) {
+    // for (size_t i = 0; i < new_req.size(); ++i)
+    //   if (new_req[i] == kNullOp)
+    //     new_req[i] = kWriteTo;
+  }
+
+  std::cout << "[Before] In igrads in subgraph_op_common.cc" << std::endl;
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    OpReqType x = req[i];
+    std::cout << i << " ";
+    if (x == kNullOp) {
+      std::cout << "kNullOp";
+    }
+    else if (x == kAddTo) {
+      std::cout << "kAddTo";
+    }
+    else if (x == kWriteTo) {
+      std::cout << "kWriteTo";
+    }
+    std::cout << " "
+              << shape_to_str(outputs[i]->shape()) << " "
+              << nd_to_str(*outputs[i])
+              << std::endl;
+  }
+
+  op->Backward(false, state, inputs, new_req, outputs);
   // If an input and an output share the array, the output array will be changed
   // by CachedOp. We need to copy data to the real output.
   for (size_t i = 0; i < igrads.size(); i++)
     if (!igrads[i].IsSame(igrad_bufs[i]))
       CopyFromTo(igrad_bufs[i], igrads[i]);
+
+  std::cout << "[After] In igrads in subgraph_op_common.cc" << std::endl;
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    OpReqType x = req[i];
+    std::cout << i << " ";
+    if (x == kNullOp) {
+      std::cout << "kNullOp";
+    }
+    else if (x == kAddTo) {
+      std::cout << "kAddTo";
+    }
+    else if (x == kWriteTo) {
+      std::cout << "kWriteTo";
+    }
+    std::cout << " "
+              << shape_to_str(outputs[i]->shape()) << " "
+              << nd_to_str(*outputs[i])
+              << std::endl;
+  }
 }
 
 }  // namespace op

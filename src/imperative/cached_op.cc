@@ -27,11 +27,46 @@
 
 namespace mxnet {
 
+std::string shape_to_str(const nnvm::TShape &shape) {
+  std::ostringstream os;
+  os << "Shape[";
+  for (auto i : shape) {
+    os << " " << i;
+  }
+  os << " ]";
+  return os.str();
+}
+
+template <typename T>
+std::string _nd_to_str(const NDArray &a) {
+  std::vector<T> data(a.shape().Size());
+  a.SyncCopyToCPU(data.data(), a.shape().Size());
+  std::ostringstream os;
+  os << "NDArray[";
+  for (auto i : data) {
+    os << " " << i;
+  }
+  os << " ]";
+  return os.str();
+}
+
+std::string nd_to_str(const NDArray &a) {
+  if (a.is_none()) {
+    return "NDArray[None]";
+  }
+  MSHADOW_TYPE_SWITCH(a.dtype(), DType, {
+    std::string result = _nd_to_str<DType>(a);
+    return result;
+  });
+  return "ERROR!";
+}
+
 DMLC_REGISTER_PARAMETER(CachedOpConfig);
 
 struct CachedOp::GraphInfo {
   nnvm::Graph fwd_graph;
   nnvm::Graph full_graph;
+  nnvm::Graph original_full_graph;
   std::vector<OpReqType> bwd_output_reqs;
   std::vector<uint32_t> bwd_input_eid;
 };
@@ -49,6 +84,7 @@ struct CachedOp::CachedOpState {
     context = context_;
     info.fwd_graph = fwd_graph_;
     info.full_graph = full_graph_;
+    info.original_full_graph = full_graph_;
 
     size_t max_nodes = info.full_graph.indexed_graph().num_nodes();
     size_t max_entries = info.full_graph.indexed_graph().num_node_entries();
@@ -355,7 +391,7 @@ bool CachedOp::SetBackwardGraph(
   std::lock_guard<std::mutex> lock(mutex_);
   Context default_ctx = inputs[0]->ctx();
   nnvm::Graph& g = info->full_graph;
-
+  // TODO(Junru): here full_graph might be changed
   if (info->bwd_output_reqs != reqs) {
     info->bwd_output_reqs = reqs;
     info->bwd_input_eid.clear();
@@ -364,6 +400,10 @@ bool CachedOp::SetBackwardGraph(
     for (size_t i = 0; i < grad_graph_.outputs.size(); ++i) {
       if (info->bwd_output_reqs[i] == kNullOp) continue;
       g.outputs.emplace_back(grad_graph_.outputs[i]);
+    }
+    for (size_t i = 0; i < g.indexed_graph().num_nodes(); ++i) {
+      const Node *n = g.indexed_graph()[i].source;
+      std::cout << n << " " << i << " " << info->original_full_graph.indexed_graph().node_id(n) << std::endl;
     }
     g.attrs["context"] = std::make_shared<dmlc::any>(
         std::vector<Context>(g.indexed_graph().num_nodes(), default_ctx));
@@ -623,6 +663,25 @@ void CachedOp::StaticRunOps(
     if (op_execs[i]) op_execs[i]->op_ctx.is_train = is_training;
   }
 
+  std::cout << "Before" << std::endl;
+  for (size_t i = 0; i < state_arrays.size(); ++i) {
+    OpReqType x = state.array_reqs[i];
+    std::cout << i << " ";
+    if (x == kNullOp) {
+      std::cout << "kNullOp";
+    }
+    else if (x == kAddTo) {
+      std::cout << "kAddTo";
+    }
+    else if (x == kWriteTo) {
+      std::cout << "kWriteTo";
+    }
+    std::cout << " "
+              << shape_to_str(state_arrays[i]->shape()) << " "
+              << nd_to_str(*state_arrays[i])
+              << std::endl;
+  }
+
   for (size_t i = start_nid; i < end_nid; i = state.opr_segs[i].next_nid) {
     const auto& opr_seg = state.opr_segs[i];
     if (opr_seg.skip) continue;
@@ -638,15 +697,21 @@ void CachedOp::StaticRunOps(
         ndinputs.emplace_back(state_arrays[idx.entry_id(j)]);
         CHECK(!ndinputs.back()->is_none());
       }
+      std::vector<int> indices;
       ndoutputs.clear();
       ndoutputs.reserve(num_outputs);
       req.clear();
       req.reserve(num_outputs);
+      std::cout << "i = " << i << ", num_outputs = " << num_outputs << std::endl;
       for (size_t j = 0; j < num_outputs; ++j) {
         size_t eid = idx.entry_id(i, j);
         ndoutputs.emplace_back(state_arrays[eid]);
         req.push_back(state.array_reqs[eid]);
+        indices.push_back(eid);
         CHECK(req.back() == kNullOp || !ndoutputs.back()->is_none());
+        std::cout << shape_to_str(state_arrays[eid]->shape()) << " "
+                  << nd_to_str(*state_arrays[eid])
+                  << std::endl;
       }
       const DispatchMode dispatch_mode = dispatch_modes[i];
       if (createop.count(node.source->op())) {
@@ -674,7 +739,40 @@ void CachedOp::StaticRunOps(
             default_ctx, node.source->attrs, ndinputs, ndoutputs, req,
             dispatch_mode);
       }
+      std::cout << "req: " << std::endl;
+      for (size_t i = 0; i < req.size(); ++i) {
+        OpReqType x = req[i];
+        std::cout << indices[i] << " ";
+        if (x == kNullOp) {
+          std::cout << "kNullOp";
+        }
+        else if (x == kAddTo) {
+          std::cout << "kAddTo";
+        }
+        else if (x == kWriteTo) {
+          std::cout << "kWriteTo";
+        }
+        std::cout << std::endl;
+      }
     }
+  }
+  std::cout << "After" << std::endl;
+  for (size_t i = 0; i < state_arrays.size(); ++i) {
+    OpReqType x = state.array_reqs[i];
+    std::cout << i << " ";
+    if (x == kNullOp) {
+      std::cout << "kNullOp";
+    }
+    else if (x == kAddTo) {
+      std::cout << "kAddTo";
+    }
+    else if (x == kWriteTo) {
+      std::cout << "kWriteTo";
+    }
+    std::cout << " "
+              << shape_to_str(state_arrays[i]->shape()) << " "
+              << nd_to_str(*state_arrays[i])
+              << std::endl;
   }
 }
 
@@ -972,6 +1070,7 @@ void CachedOp::StaticBackward(
 
   nnvm::Graph& g = state.info.full_graph;
   const auto& idx = g.indexed_graph();
+  const auto& original_idx = state.info.original_full_graph.indexed_graph();
   auto num_forward_nodes = state.info.fwd_graph.indexed_graph().num_nodes();
 
   if (!state.bwd_alloc || !match) {
@@ -1024,11 +1123,16 @@ void CachedOp::StaticBackward(
     for (size_t i = 0; i < grad_graph_.outputs.size(); ++i) {
       auto entry = grad_graph_.outputs[i];
       if (!idx.exist(entry.node.get())) continue;
-      auto eid = idx.entry_id(entry);
+      auto eid = original_idx.entry_id(entry);
+      // TODO(Junru): bug here
+      std::cout << "reqs[" << i << "] moves to " << eid << std::endl;
       state.array_reqs[eid] = reqs[i];
       // An input and an output may share the same array.
-      if (!arrays[eid]->is_none())
+      if (!arrays[eid]->is_none()) {
+        std::cout << "Execute outputs[" << i << "] = arrays[" << eid << "]" << std::endl;
         *outputs[i] = arrays[eid]->Detach();
+      }
+      std::cout << "outputs[" << i << "] moves to " << eid << std::endl;
       arrays[eid] = outputs[i];
     }
   }

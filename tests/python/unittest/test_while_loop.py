@@ -234,30 +234,30 @@ def _verify_while_loop(cond, func, loop_var_shapes, free_var_shapes, is_train, m
     if is_for:
         assert loop_var_shapes[0] == (1, )
         args["LoopVar0"] = mx.nd.array([0])
-    out_grads = []
     imp_outs, imp_grads, out_grads, n_steps = _get_imperative_result()
+    print "Inputs"
+    for name, arg in args.items():
+        print name, arg
+    print
+    print "out_grads", out_grads
     sym_outs, sym_grads = _get_symbolic_result(out_grads, n_steps)
     for imp_out, sym_out in zip(imp_outs, sym_outs):
         if imp_out is None or sym_out is None:
             continue
         assert_almost_equal(imp_out, sym_out)
-    print("Inputs")
-    for name, arg in args.items():
-        print name, arg
-    print
-    print("imp_outs:")
+    print "imp_outs:"
     for a in imp_outs:
         print a
     print
-    print("sym_outs:")
+    print "sym_outs:"
     for a in sym_outs:
         print a
     print
-    print("imp_grads:")
+    print "imp_grads:"
     for a in imp_grads:
         print a
     print
-    print("sym_grads:")
+    print "sym_grads:"
     for a in sym_grads:
         print a
     print
@@ -319,7 +319,7 @@ def test_while_loop_for_foreach():
 
     def case_2(**params):
         step_funcs = [
-            lambda in_, s, f_1: in_ + f_1,
+            lambda in_, s, f_1: in_ * f_1,
             # lambda in_, s, f_1: in_ * 2 + s + f_1,
             # lambda in_, s, f_1: s + in_ * 2 + f_1,
             # lambda in_, s, f_1: s + f_1 + in_ * 2,
