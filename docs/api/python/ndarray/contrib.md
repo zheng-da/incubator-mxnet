@@ -57,6 +57,7 @@ In the rest of this document, we list routines provided by the `ndarray.contrib`
     cond
     index_copy
     getnnz
+    edge_id
 ```
 
 ## API Reference
