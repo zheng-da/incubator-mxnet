@@ -43,24 +43,25 @@ namespace op {
 template<typename OP, typename xpu, typename GType, typename ...Args>
 inline static void LaunchRNG(mshadow::Stream<xpu> *s,
                              common::random::RandGenerator<xpu, GType> *gen,
-                             const int N, Args... args) {
+                             const int64_t N, Args... args) {
   // minimal check to avoid division by zero, below.
   // if `N` is zero the map operation is a no-op in any case.
   if (N <= 0) {
     return;
   }
-  const int nloop = (N + RandGenerator<xpu>::kMinNumRandomPerThread - 1) /
+  const int64_t nloop = (N + RandGenerator<xpu>::kMinNumRandomPerThread - 1) /
                     RandGenerator<xpu>::kMinNumRandomPerThread;
-  const int nthread = std::min(nloop, RandGenerator<xpu>::kNumRandomStates);
-  const int step = (N + nthread - 1) / nthread;
+  const int64_t nthread = std::min(nloop,
+                                   static_cast<int64_t>(RandGenerator<xpu>::kNumRandomStates));
+  const int64_t step = (N + nthread - 1) / nthread;
   Kernel<OP, xpu>::Launch(s, nthread, *gen, N, step, args...);
 }
 
 #define RNG_KERNEL_LOOP(xpu, GType, thread_id, gen, N, step, ...)        \
-  const int start = thread_id * step;                                    \
-  const int end = start + step;                                          \
+  const int64_t start = thread_id * step;                                    \
+  const int64_t end = start + step;                                          \
   typename RandGenerator<xpu, GType>::Impl genImpl(&gen, thread_id);     \
-  for (int i = start; i < end && i < N; ++i) {                           \
+  for (int64_t i = start; i < end && i < N; ++i) {                           \
     {__VA_ARGS__}                                                        \
   }
 
@@ -68,7 +69,7 @@ template<typename xpu>
 struct SampleUniformKernel {
   template<typename IType, typename OType>
   MSHADOW_XINLINE static void Map(int id, RandGenerator<xpu, OType> gen,
-                                  const int N, const int step,
+                                  const int64_t N, const int64_t step,
                                   index_t nParm, index_t nSample,
                                   const IType *lower, const IType *upper, OType *out) {
     RNG_KERNEL_LOOP(xpu, OType, id, gen, N, step, {
@@ -96,7 +97,7 @@ template<typename xpu>
 struct SampleNormalKernel {
   template<typename IType, typename OType>
   MSHADOW_XINLINE static void Map(int id, RandGenerator<xpu, OType> gen,
-                                  const int N, const int step,
+                                  const int64_t N, const int64_t step,
                                   index_t nParm, index_t nSample,
                                   const IType *mean, const IType *std, OType *out) {
     RNG_KERNEL_LOOP(xpu, OType, id, gen, N, step, {
@@ -123,7 +124,7 @@ template<typename xpu>
 struct SampleExponentialKernel {
   template<typename IType, typename OType>
   MSHADOW_XINLINE static void Map(int id, RandGenerator<xpu, OType> gen,
-                                  const int N, const int step,
+                                  const int64_t N, const int64_t step,
                                   index_t nParm, index_t nSample,
                                   const IType *lambda, OType *out) {
     RNG_KERNEL_LOOP(xpu, OType, id, gen, N, step, {
@@ -171,7 +172,7 @@ template<typename xpu>
 struct SampleGammaKernel {
   template<typename IType, typename OType, typename FType>
   MSHADOW_XINLINE static void Map(int id, RandGenerator<xpu, FType> gen,
-                                  const int N, const int step,
+                                  const int64_t N, const int64_t step,
                                   index_t nParm, index_t nSample,
                                   const IType *alpha, const IType *beta, OType *out) {
     RNG_KERNEL_LOOP(xpu, FType, id, gen, N, step, {
@@ -233,7 +234,7 @@ template<typename xpu>
 struct SamplePoissonKernel {
   template<typename IType, typename OType>
   MSHADOW_XINLINE static void Map(int id, RandGenerator<xpu, float> gen,
-                                  const int N, const int step,
+                                  const int64_t N, const int64_t step,
                                   index_t nParm, index_t nSample,
                                   const IType *lambda, OType *out) {
     RNG_KERNEL_LOOP(xpu, float, id, gen, N, step, {
@@ -260,7 +261,7 @@ template<typename xpu>
 struct SampleNegativeBinomialKernel {
   template<typename IType, typename OType>
   MSHADOW_XINLINE static void Map(int id, RandGenerator<xpu, float> gen,
-                                  const int N, const int step,
+                                  const int64_t N, const int64_t step,
                                   index_t nParm, index_t nSample,
                                   const IType *k, const IType *p, OType *out) {
     RNG_KERNEL_LOOP(xpu, float, id, gen, N, step, {
@@ -292,7 +293,7 @@ template<typename xpu>
 struct SampleGeneralizedNegativeBinomialKernel {
   template<typename IType, typename OType>
   MSHADOW_XINLINE static void Map(int id, RandGenerator<xpu, float> gen,
-                                  const int N, const int step,
+                                  const int64_t N, const int64_t step,
                                   index_t nParm, index_t nSample,
                                   const IType *mu, const IType *alpha, OType *out) {
     RNG_KERNEL_LOOP(xpu, float, id, gen, N, step, {

@@ -503,21 +503,21 @@ struct Kernel<OP, cpu> {
    * \param args Varargs to eventually pass to the OP::Map() functoion
    */
   template<typename ...Args>
-  inline static bool Launch(mshadow::Stream<cpu> *, const int N, Args... args) {
+  inline static bool Launch(mshadow::Stream<cpu> *, const int64_t N, Args... args) {
 #ifdef _OPENMP
     const int omp_threads = engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
     if (omp_threads < 2) {
-      for (int i = 0; i < N; ++i) {
+      for (int64_t i = 0; i < N; ++i) {
         OP::Map(i, args...);
       }
     } else {
       #pragma omp parallel for num_threads(omp_threads)
-      for (int i = 0; i < N; ++i) {
+      for (int64_t i = 0; i < N; ++i) {
         OP::Map(i, args...);
       }
     }
 #else
-    for (int i = 0; i < N; ++i) {
+    for (int64_t i = 0; i < N; ++i) {
       OP::Map(i, args...);
     }
 #endif
@@ -536,22 +536,22 @@ struct Kernel<OP, cpu> {
    * \param args Varargs to eventually pass to the OP::Map() functoion
    */
   template<typename PRIMITIVE_OP, typename DType, typename ...Args>
-  static void LaunchTuned(mshadow::Stream<cpu> *, const int N, Args... args) {
+  static void LaunchTuned(mshadow::Stream<cpu> *, const int64_t N, Args... args) {
 #ifdef _OPENMP
     const int omp_threads = engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
     if (omp_threads < 2 || !tuned_op<PRIMITIVE_OP, DType>::UseOMP(
       static_cast<size_t>(N), static_cast<size_t>(omp_threads))) {
-      for (int i = 0; i < N; ++i) {
+      for (int64_t i = 0; i < N; ++i) {
         OP::Map(i, args...);
       }
     } else {
       #pragma omp parallel for num_threads(omp_threads)
-      for (int i = 0; i < N; ++i) {
+      for (int64_t i = 0; i < N; ++i) {
         OP::Map(i, args...);
       }
     }
 #else
-    for (int i = 0; i < N; ++i) {
+    for (int64_t i = 0; i < N; ++i) {
       OP::Map(i, args...);
     }
 #endif
@@ -565,15 +565,15 @@ struct Kernel<OP, cpu> {
    * \param args Varargs to eventually pass to the UseOMP() and OP::Map() functions
    */
   template<typename ...Args>
-  inline static void LaunchEx(mshadow::Stream<cpu> *s, const int N, Args... args) {
+  inline static void LaunchEx(mshadow::Stream<cpu> *s, const int64_t N, Args... args) {
 #ifdef _OPENMP
     const int omp_threads = engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
     if (omp_threads < 2) {
       OP::Map(0, N, args...);
     } else {
-      const int length = (N + omp_threads - 1) / omp_threads;
+      const int64_t length = (N + omp_threads - 1) / omp_threads;
       #pragma omp parallel for num_threads(omp_threads)
-      for (int i = 0; i < N; i += length) {
+      for (int64_t i = 0; i < N; i += length) {
         OP::Map(i, i + length > N ? N - i : length, args...);
       }
     }
@@ -595,7 +595,7 @@ struct Kernel<OP, cpu> {
   template<typename DType, typename T = OP, typename ...Args>
   static MSHADOW_CINLINE
   typename std::enable_if<std::is_base_of<tunable, T>::value, bool>::type
-  Launch(mshadow::Stream<cpu> *s, const int N, DType *dest, Args... args) {
+  Launch(mshadow::Stream<cpu> *s, const int64_t N, DType *dest, Args... args) {
     LaunchTuned<T, DType>(s, N, dest, args...);
     return true;
   }
@@ -613,7 +613,7 @@ struct Kernel<OP, cpu> {
   template<typename DType, typename T = OP, typename ...Args>
   static MSHADOW_CINLINE
   typename std::enable_if<std::is_base_of<tunable, typename T::Operation>::value, bool>::type
-  Launch(mshadow::Stream<cpu> *s, const int N, DType *dest, Args... args) {
+  Launch(mshadow::Stream<cpu> *s, const int64_t N, DType *dest, Args... args) {
     LaunchTuned<typename T::Operation, DType>(s, N, dest, args...);
     return true;
   }
