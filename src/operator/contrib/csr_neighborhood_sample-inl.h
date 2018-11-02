@@ -237,7 +237,6 @@ static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
   while (!node_queue.empty() && 
          vertices_count < max_num_vertices) {
     ver_node& cur_node = node_queue.front();
-    node_queue.pop();
     if (cur_node.level < num_hops) {
       dgl_id_t src_id = cur_node.vertex_id;
       sampled_vec.clear();
@@ -259,6 +258,7 @@ static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
         node_queue.push(new_node);
       }
     }
+    node_queue.pop();
   }
 
   // copy sub_ver_list to output
