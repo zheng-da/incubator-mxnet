@@ -433,51 +433,51 @@ struct op_with_req {
 
   /*! \brief input is one tensor */
   template<typename DType>
-  MSHADOW_XINLINE static void Map(int i, DType *out, const DType *in) {
+  MSHADOW_XINLINE static void Map(int64_t i, DType *out, const DType *in) {
     KERNEL_ASSIGN(out[i], req, OP::Map(in[i]));
   }
 
   /*! \brief inputs are two tensors */
   template<typename DType>
-  MSHADOW_XINLINE static void Map(int i, DType *out, const DType *lhs, const DType *rhs) {
+  MSHADOW_XINLINE static void Map(int64_t i, DType *out, const DType *lhs, const DType *rhs) {
     KERNEL_ASSIGN(out[i], req, OP::Map(lhs[i], rhs[i]));
   }
 
   /*! \brief input is tensor and a scalar value */
   template<typename DType>
-  MSHADOW_XINLINE static void Map(int i, DType *out, const DType *in, const DType value) {
+  MSHADOW_XINLINE static void Map(int64_t i, DType *out, const DType *in, const DType value) {
     KERNEL_ASSIGN(out[i], req, OP::Map(in[i], value));
   }
 
   /*! \brief input is tensor and two scalar value */
   template<typename DType>
-  MSHADOW_XINLINE static void Map(int i, DType *out, const DType *in,
+  MSHADOW_XINLINE static void Map(int64_t i, DType *out, const DType *in,
                                   const DType value_1, const DType value_2) {
     KERNEL_ASSIGN(out[i], req, OP::Map(in[i], value_1, value_2));
   }
 
   /*! \brief No inputs (ie fill to constant value) */
   template<typename DType>
-  MSHADOW_XINLINE static void Map(int i, DType *out) {
+  MSHADOW_XINLINE static void Map(int64_t i, DType *out) {
     KERNEL_ASSIGN(out[i], req, OP::Map());
   }
 
   /*! \brief input is single scalar value */
   template<typename DType>
-  MSHADOW_XINLINE static void Map(int i, DType *out, const DType value) {
+  MSHADOW_XINLINE static void Map(int64_t i, DType *out, const DType value) {
     KERNEL_ASSIGN(out[i], req, OP::Map(value));
   }
 
   /*! \brief inputs are two tensors and a scalar value */
   template<typename DType>
-  MSHADOW_XINLINE static void Map(int i, DType *out,
+  MSHADOW_XINLINE static void Map(int64_t i, DType *out,
                                   const DType *input_1, const DType *input_2, const DType value) {
     KERNEL_ASSIGN(out[i], req, OP::Map(input_1[i], input_2[i], value));
   }
 
   /*! \brief inputs are three tensors (ie backward grad with binary grad function) */
   template<typename DType>
-  MSHADOW_XINLINE static void Map(int i, DType *out,
+  MSHADOW_XINLINE static void Map(int64_t i, DType *out,
                                   const DType *input_1,
                                   const DType *input_2,
                                   const DType *input_3) {
@@ -669,7 +669,7 @@ template<int val>
 struct set_to_int : public tunable {
   // mxnet_op version (when used directly with Kernel<>::Launch()) */
   template<typename DType>
-  MSHADOW_XINLINE static void Map(int i, DType *out) {
+  MSHADOW_XINLINE static void Map(int64_t i, DType *out) {
     out[i] = DType(val);
   }
   // mshadow_op version (when used with op_with_req<>)

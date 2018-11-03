@@ -454,7 +454,7 @@ struct backward_gather_nd_gpu {
 };
 
 template<typename DType, typename IType>
-inline void GatherNDBackwardImpl(int N, int M, int K,
+inline void GatherNDBackwardImpl(int64_t N, int64_t M, int64_t K,
                                  const mshadow::Shape<10> strides,
                                  DType* out,
                                  const DType* data,

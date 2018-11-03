@@ -420,19 +420,19 @@ inline void SparseEmbeddingOpBackwardRspImpl<cpu>(const bool deterministic,
 
 template<typename DType, typename IType>
 inline typename std::enable_if<(!std::is_same<DType, mshadow::half::half_t>::value), void>::type
-GatherNDBackwardImpl(int N, int M, int K,
+GatherNDBackwardImpl(int64_t N, int64_t M, int64_t K,
                      const mshadow::Shape<10> strides,
                      DType* out,
                      const DType* data,
                      const IType* indices,
                      mshadow::Stream<cpu> *s) {
 #pragma omp parallel for
-  for (int i = 0; i < N; i++) {
-    int offset = 0;
-    for (int j = 0; j < M; ++j) {
-      offset += strides[j] * static_cast<int>(indices[j*N + i]);
+  for (int64_t i = 0; i < N; i++) {
+    int64_t offset = 0;
+    for (int64_t j = 0; j < M; ++j) {
+      offset += strides[j] * static_cast<int64_t>(indices[j*N + i]);
     }
-    for (int j = 0; j < K; ++j) {
+    for (int64_t j = 0; j < K; ++j) {
 #pragma omp atomic
       out[offset + j] += data[i * K + j];
     }
@@ -441,18 +441,18 @@ GatherNDBackwardImpl(int N, int M, int K,
 
 template<typename DType, typename IType>
 inline typename std::enable_if<std::is_same<DType, mshadow::half::half_t>::value, void>::type
-GatherNDBackwardImpl(int N, int M, int K,
+GatherNDBackwardImpl(int64_t N, int64_t M, int64_t K,
                      const mshadow::Shape<10> strides,
                      DType* out,
                      const DType* data,
                      const IType* indices,
                      mshadow::Stream<cpu> *s) {
-  for (int i = 0; i < N; i++) {
-    int offset = 0;
-    for (int j = 0; j < M; ++j) {
-      offset += strides[j] * static_cast<int>(indices[j*N + i]);
+  for (int64_t i = 0; i < N; i++) {
+    int64_t offset = 0;
+    for (int64_t j = 0; j < M; ++j) {
+      offset += strides[j] * static_cast<int64_t>(indices[j*N + i]);
     }
-    for (int j = 0; j < K; ++j) {
+    for (int64_t j = 0; j < K; ++j) {
       out[offset + j] += data[i * K + j];
     }
   }
