@@ -40,30 +40,15 @@ indptr_np = np.array([0, 4,8,12,16,20], dtype=np.int64)
 a = mx.nd.sparse.csr_matrix((data_np, indices_np, indptr_np), shape=shape)
 a.asnumpy()
 
-probability = mx.nd.array([0.99, 0.99, 0.99, 0.01, 0.01])
-
-seed = mx.nd.array([0,1,2], dtype=np.int64)
-out = mx.nd.contrib.neighbor_sample(a, probability, seed, num_hops=1, num_neighbor=2, max_num_vertices=5)
-out.asnumpy()
-
-seed = mx.nd.array([0,1,2,4], dtype=np.int64)
-out = mx.nd.contrib.neighbor_sample(a, probability, seed, num_hops=1, num_neighbor=2, max_num_vertices=5)
-out.asnumpy()
-
-seed = mx.nd.array([0,1], dtype=np.int64)
-out = mx.nd.contrib.neighbor_sample(a, probability, seed, num_hops=1, num_neighbor=2, max_num_vertices=5)
-out.asnumpy()
-
 seed = mx.nd.array([0], dtype=np.int64)
-out = mx.nd.contrib.neighbor_sample(a, probability, seed, num_hops=1, num_neighbor=2, max_num_vertices=3)
+out = mx.nd.contrib.neighbor_sample(a, seed, num_hops=1, num_neighbor=1, max_num_vertices=5)
 out.asnumpy()
 
-seed = mx.nd.array([0], dtype=np.int64)
-out = mx.nd.contrib.neighbor_sample(a, probability, seed, num_hops=1, num_neighbor=3, max_num_vertices=5)
+out = mx.nd.contrib.neighbor_sample(a, seed, num_hops=1, num_neighbor=2, max_num_vertices=5)
 out.asnumpy()
 
-seed = mx.nd.array([0], dtype=np.int64)
-out = mx.nd.contrib.neighbor_sample(a, probability, seed, num_hops=1, num_neighbor=4, max_num_vertices=5)
+seed = mx.nd.array([0,4], dtype=np.int64)
+out = mx.nd.contrib.neighbor_sample(a, seed, num_hops=1, num_neighbor=2, max_num_vertices=5)
 out.asnumpy()
 
 */
@@ -73,14 +58,13 @@ DMLC_REGISTER_PARAMETER(NeighborSampleParam);
 NNVM_REGISTER_OP(_contrib_neighbor_sample)
 .MXNET_DESCRIBE("")
 .set_attr_parser(ParamParser<NeighborSampleParam>)
-.set_num_inputs(3)
+.set_num_inputs(2)
 .set_num_outputs(1)
 .set_attr<FInferStorageType>("FInferStorageType", CSRNeighborSampleStorageType)
 .set_attr<nnvm::FInferShape>("FInferShape", CSRNeighborSampleShape)
 .set_attr<nnvm::FInferType>("FInferType", CSRNeighborSampleType)
 .set_attr<FComputeEx>("FComputeEx<cpu>", CSRNeighborSampleComputeExCPU)
 .add_argument("csr_matrix", "NDArray-or-Symbol", "csr matrix")
-.add_argument("prob_array", "NDArray-or-Symbol", "probility vector")
 .add_argument("seed_array", "NDArray-or-Symbol", "seed vertices")
 .add_arguments(NeighborSampleParam::__FIELDS__());    
 
