@@ -48,8 +48,7 @@ typedef int64_t dgl_id_t;
 
 //------------------------------------------------------------------------------
 // input[0]: Graph
-// input[1]: Probability
-// input[2]: seed_vertices
+// input[1]: seed_vertices
 // args[0]: num_hops
 // args[1]: num_neighbor 
 // args[2]: max_num_vertices
@@ -82,12 +81,12 @@ static bool CSRNeighborSampleStorageType(const nnvm::NodeAttrs& attrs,
                                          DispatchMode* dispatch_mode,
                                          std::vector<int> *in_attrs,
                                          std::vector<int> *out_attrs) {
-  CHECK_EQ(in_attrs->size(), 3);
+  CHECK_EQ(in_attrs->size(), 2);
   CHECK_EQ(out_attrs->size(), 1);
 
   CHECK_EQ(in_attrs->at(0), mxnet::kCSRStorage);
+
   CHECK_EQ(in_attrs->at(1), mxnet::kDefaultStorage);
-  CHECK_EQ(in_attrs->at(2), mxnet::kDefaultStorage);
 
   bool success = true;
   if (!type_assign(&(*out_attrs)[0], mxnet::kDefaultStorage)) {
@@ -102,16 +101,13 @@ static bool CSRNeighborSampleStorageType(const nnvm::NodeAttrs& attrs,
 static bool CSRNeighborSampleShape(const nnvm::NodeAttrs& attrs,
                                    std::vector<TShape> *in_attrs,
                                    std::vector<TShape> *out_attrs) {
-  CHECK_EQ(in_attrs->size(), 3);
+  CHECK_EQ(in_attrs->size(), 2);
   CHECK_EQ(out_attrs->size(), 1);
 
   CHECK_EQ(in_attrs->at(0).ndim(), 2U);
   CHECK_EQ(in_attrs->at(1).ndim(), 1U);
-  CHECK_EQ(in_attrs->at(2).ndim(), 1U);
   // Check the graph shape
   CHECK_EQ(in_attrs->at(0)[0], in_attrs->at(0)[1]);
-  // Probbality shape must be equal to the vertices length
-  CHECK_EQ(in_attrs->at(0)[0], in_attrs->at(1)[0]);
 
   const NeighborSampleParam& params = 
     nnvm::get<NeighborSampleParam>(attrs.parsed);
@@ -127,16 +123,24 @@ static bool CSRNeighborSampleShape(const nnvm::NodeAttrs& attrs,
 static bool CSRNeighborSampleType(const nnvm::NodeAttrs& attrs,
                                   std::vector<int> *in_attrs,
                                   std::vector<int> *out_attrs) {
-  CHECK_EQ(in_attrs->size(), 3);
+  CHECK_EQ(in_attrs->size(), 2);
   CHECK_EQ(out_attrs->size(), 1);
   out_attrs->at(0) = in_attrs->at(0);
 
-  TYPE_ASSIGN_CHECK(*out_attrs, 0, in_attrs->at(2));
+  TYPE_ASSIGN_CHECK(*out_attrs, 0, in_attrs->at(1));
   return out_attrs->at(0) != -1;
 }
 
+static void GetSrcList(const dgl_id_t* col_list,
+                       const dgl_id_t* indptr,
+                       const dgl_id_t dst_id,
+                       std::vector<dgl_id_t>& src_list) {
+  for (dgl_id_t i = *(indptr+dst_id); i < *(indptr+dst_id+1); ++i) {
+    src_list.push_back(col_list[i]);
+  }
+}
+
 static void GetSample(std::vector<dgl_id_t>& ver_list,
-                      const float* probility,
                       const size_t max_num_neighbor,
                       std::vector<dgl_id_t>& out) {
   // Copy ver_list to output
@@ -147,20 +151,21 @@ static void GetSample(std::vector<dgl_id_t>& ver_list,
     return;
   }
   // Make sample
-  std::unordered_map<dgl_id_t, bool> mp;
-  while (out.size() < max_num_neighbor) {
-    random_shuffle(ver_list.begin(), ver_list.end());
-    for (size_t i = 0 ; i < ver_list.size(); ++i) {
-      int rand_num = (rand() % 100) + 1; 
-      float prob = probility[ver_list[i]];
-      if (rand_num <= static_cast<int>(prob*100) &&
-          mp[ver_list[i]] == false) {
-        out.push_back(ver_list[i]);
-        mp[ver_list[i]] = true;
-        if (out.size() >= max_num_neighbor) {
-          return;
-        }
-      }
+  std::unordered_map<size_t, bool> mp;
+  size_t sample_count = 0;
+  for (;;) {
+    // rand_num = [0, ver_list.size()-1]
+    size_t rand_num = rand() % ver_list.size(); 
+    auto got = mp.find(rand_num);
+    if (got != mp.end() && mp[rand_num]) {
+      // re-sample
+      continue;
+    }
+    mp[rand_num] = true;
+    out.push_back(ver_list[rand_num]);
+    sample_count++;
+    if (sample_count == max_num_neighbor) {
+      break;
     }
   }
 }
@@ -170,7 +175,7 @@ static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
                                           const std::vector<NDArray>& inputs,
                                           const std::vector<OpReqType>& req,
                                           const std::vector<NDArray>& outputs) {
-  CHECK_EQ(inputs.size(), 3U);
+  CHECK_EQ(inputs.size(), 2U);
   CHECK_EQ(outputs.size(), 1U);
 
   const NeighborSampleParam& params = 
@@ -183,95 +188,70 @@ static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
   dgl_id_t num_neighbor = params.num_neighbor;
   dgl_id_t max_num_vertices = params.max_num_vertices;
 
-  size_t vertices_num = inputs[1].data().Size();
-  size_t egde_num = inputs[0].data().Size();
-  size_t seed_num = inputs[2].data().Size();
+  size_t seed_num = inputs[1].data().Size();
 
   CHECK_GE(max_num_vertices, seed_num);
 
-  const dgl_id_t* val_list = inputs[0].data().dptr<dgl_id_t>();
   const dgl_id_t* col_list = inputs[0].aux_data(1).dptr<dgl_id_t>();
   const dgl_id_t* indptr = inputs[0].aux_data(0).dptr<dgl_id_t>();
-  const dgl_id_t* seed = inputs[2].data().dptr<dgl_id_t>();
-  const float* prob_array = inputs[1].data().dptr<float>();
-
-  size_t row_len = inputs[0].aux_data(0).Size() - 1;
-  CHECK_EQ(row_len, vertices_num);
+  const dgl_id_t* seed = inputs[1].data().dptr<dgl_id_t>();
 
   dgl_id_t* out = outputs[0].data().dptr<dgl_id_t>();
 
-  // Get the mapping between edge_id and row_id
-  dgl_id_t idx = 0;
-  std::unordered_map<dgl_id_t, dgl_id_t> edge_mp;
-  for (size_t i = 1; i < vertices_num+1; ++i) {
-    size_t edge_in_a_row = indptr[i] - indptr[i-1];
-    for (size_t j = 0; j < edge_in_a_row; ++j) {
-      edge_mp[val_list[idx++]] = i-1;
-    }
-  }
-
-  // Get the mapping between col_id (src) and row_id_list (dst)
-  std::vector<std::vector<dgl_id_t> > col_row_list(vertices_num);
-  for (size_t i = 0; i < egde_num; ++i) {
-    dgl_id_t row_id = edge_mp[val_list[i]];
-    dgl_id_t col_id = col_list[i];
-    col_row_list[col_id].push_back(row_id);
-  }
-
   // BFS traverse the graph and sample vertices
-  std::vector<dgl_id_t> sub_ver_mp(vertices_num, 0);
+  dgl_id_t sub_vertices_count = 0;
+  std::unordered_map<dgl_id_t, bool> sub_ver_mp;
   std::queue<ver_node> node_queue;
-  dgl_id_t vertices_count = 0;
+  // add seed vertices
   for (size_t i = 0; i < seed_num; ++i) {
-    // add seed vertices
     ver_node node;
     node.vertex_id = seed[i];
     node.level = 0;
     node_queue.push(node);
-    // use 1 as flag
-    sub_ver_mp[node.vertex_id] = 1;
-    vertices_count++;
+    sub_ver_mp[node.vertex_id] = true;
+    sub_vertices_count++;
   }
 
-  std::vector<dgl_id_t> sampled_vec;
-  while (!node_queue.empty() && 
-         vertices_count < max_num_vertices) {
+  std::vector<dgl_id_t> tmp_src_list;
+  std::vector<dgl_id_t> tmp_sampled_list;
+
+  while (!node_queue.empty() && sub_vertices_count < max_num_vertices) {
     ver_node& cur_node = node_queue.front();
     if (cur_node.level < num_hops) {
-      dgl_id_t src_id = cur_node.vertex_id;
-      sampled_vec.clear();
-      GetSample(col_row_list[src_id], // ver_list
-                prob_array,      // probability
-                num_neighbor,    // max_num_neighbor
-                sampled_vec);    // output
-      for (size_t i = 0; i < sampled_vec.size(); ++i) {
-        if (sub_ver_mp[sampled_vec[i]] == 0) {
-          vertices_count++;
-          sub_ver_mp[sampled_vec[i]] = 1;
+      dgl_id_t dst_id = cur_node.vertex_id;
+      tmp_src_list.clear();
+      tmp_sampled_list.clear();
+      GetSrcList(col_list, indptr, dst_id, tmp_src_list);
+      GetSample(tmp_src_list, num_neighbor, tmp_sampled_list);
+      for (size_t i = 0; i < tmp_sampled_list.size(); ++i) {
+        auto got = sub_ver_mp.find(tmp_sampled_list[i]);
+        if (got == sub_ver_mp.end()) {
+          sub_vertices_count++;
+          sub_ver_mp[tmp_sampled_list[i]] = true;
+          ver_node new_node;
+          new_node.vertex_id = tmp_sampled_list[i];
+          new_node.level = cur_node.level + 1;
+          node_queue.push(new_node);
         }
-        if (vertices_count >= max_num_vertices) {
+        if (sub_vertices_count >= max_num_vertices) {
           break;
         }
-        ver_node new_node;
-        new_node.vertex_id = sampled_vec[i];
-        new_node.level = cur_node.level+1;
-        node_queue.push(new_node);
       }
     }
     node_queue.pop();
   }
 
-  // copy sub_ver_list to output
-  idx = 0;
-  for (size_t i = 0; i < sub_ver_mp.size(); ++i) {
-    if (sub_ver_mp[i] != 0) {
-      *(out + idx) = i;
+  // Copy sub_ver_mp to output
+  dgl_id_t idx = 0;
+  for (auto& data: sub_ver_mp) {
+    if (data.second) {
+      *(out+idx) = data.first;
       idx++;
     }
   }
-  // The rest data is -1
+  // The rest data will be set to -1
   for (dgl_id_t i = idx; i < max_num_vertices; ++i) {
-    *(out + i) = -1;
+    *(out+i) = -1;
   }
 }
 
