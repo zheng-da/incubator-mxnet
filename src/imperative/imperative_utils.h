@@ -425,6 +425,9 @@ inline void PushFComputeEx(const FComputeEx& fn,
   ExecType exec_type = fexec_type.count(op) ? fexec_type[op](attrs) : ExecType::kSync;
   std::vector<NDArray> inputs, outputs;
   DerefInputOutput(p_inputs, p_outputs, &inputs, &outputs);
+  static bool p_queue = dmlc::GetEnv("DGL_MX_PRIORITY_SUBGRAPH", true);
+  auto prop = op->name == (p_queue && "_contrib_dgl_subgraph") ? FnProperty::kCPUPrioritized: FnProperty::kNormal;
+  if (prop == FnProperty::kCPUPrioritized) common::LogOnce("PRIORITY Queue used for _contrib_dgl_subgraph");
   const auto& run = [=](RunContext rctx) {
       OpContext opctx{need_grad, is_train, rctx, engine::CallbackOnComplete(), requested};
 #if MXNET_USE_MKLDNN == 1
@@ -440,7 +443,7 @@ inline void PushFComputeEx(const FComputeEx& fn,
     run(RunContext{ctx, nullptr});
   } else {
     CHECK(exec_type == ExecType::kSync);
-    Engine::Get()->PushSync(run, ctx, read_vars, write_vars, FnProperty::kNormal,
+    Engine::Get()->PushSync(run, ctx, read_vars, write_vars, prop,
                             0, op->name.c_str());
   }
 }
