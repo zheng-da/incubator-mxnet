@@ -175,16 +175,30 @@ static void GetSample(std::vector<dgl_id_t>& ver_list,
     }
     return;
   }
-  // Make sample
-  std::unordered_set<size_t> sampled_idxs;
-  // TODO it's going to be slow if ver_list doesn't have many elements.
-  while (sampled_idxs.size() < max_num_neighbor) {
-    // rand_num = [0, ver_list.size()-1]
-    size_t rand_num = rand() % ver_list.size(); 
-    sampled_idxs.insert(rand_num);
+  // If we just sample a small number of elements from a large neighbor list.
+  std::vector<size_t> sorted_idxs(max_num_neighbor);
+  if (ver_list.size() > max_num_neighbor * 10) {
+    std::unordered_set<size_t> sampled_idxs;
+    // TODO it's going to be slow if ver_list doesn't have many elements.
+    while (sampled_idxs.size() < max_num_neighbor) {
+      // rand_num = [0, ver_list.size()-1]
+      size_t rand_num = rand() % ver_list.size();
+      sampled_idxs.insert(rand_num);
+    }
+    size_t i = 0;
+    for (auto it = sampled_idxs.begin(); it != sampled_idxs.end(); it++, i++)
+      sorted_idxs[i] = *it;
+  } else {
+    // The vertex list is relatively small. We just shuffle the list and
+    // take the first few.
+    std::vector<size_t> idxs(ver_list.size());
+    for (size_t i = 0; i < idxs.size(); i++) idxs[i] = i;
+    std::random_shuffle(idxs.begin(), idxs.end());
+    for (size_t i = 0; i < max_num_neighbor; i++)
+      sorted_idxs[i] = idxs[i];
   }
-  std::vector<size_t> sorted_idxs(sampled_idxs.begin(), sampled_idxs.end());
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
+
   for (auto idx : sorted_idxs) {
     out.push_back(ver_list[idx]);
     out_edge.push_back(edge_list[idx]);
