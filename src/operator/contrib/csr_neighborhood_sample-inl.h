@@ -219,8 +219,8 @@ static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
   CHECK_GE(max_num_vertices, seed_num);
 
   const dgl_id_t* val_list = inputs[0].data().dptr<dgl_id_t>();
-  const dgl_id_t* col_list = inputs[0].aux_data(1).dptr<dgl_id_t>();
-  const dgl_id_t* indptr = inputs[0].aux_data(0).dptr<dgl_id_t>();
+  const dgl_id_t* col_list = inputs[0].aux_data(csr::kIdx).dptr<dgl_id_t>();
+  const dgl_id_t* indptr = inputs[0].aux_data(csr::kIndPtr).dptr<dgl_id_t>();
   const dgl_id_t* seed = inputs[1].data().dptr<dgl_id_t>();
 
   dgl_id_t* out = outputs[0].data().dptr<dgl_id_t>();
@@ -236,6 +236,7 @@ static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
     node.level = 0;
     node_queue.push(node);
     sub_ver_mp[node.vertex_id] = true;
+    sub_vertices_count++;
   }
 
   std::vector<dgl_id_t> tmp_src_list;
@@ -273,7 +274,7 @@ static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
       edge_mp[dst_id] = tmp_sampled_edge_list;
       
       sub_vertices_count++;
-      if (sub_vertices_count >= max_num_vertices) {
+      if (sub_vertices_count == max_num_vertices) {
         break;
       }
 
@@ -281,6 +282,7 @@ static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
         auto got = sub_ver_mp.find(tmp_sampled_src_list[i]);
         if (got == sub_ver_mp.end()) {
           sub_ver_mp[tmp_sampled_src_list[i]] = true;
+          sub_vertices_count++;
           ver_node new_node;
           new_node.vertex_id = tmp_sampled_src_list[i];
           new_node.level = cur_node.level + 1;
