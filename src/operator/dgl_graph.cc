@@ -332,26 +332,28 @@ static inline size_t get_num_graphs(const SubgraphCompactParam &params) {
 }
 
 static void CompactSubgraph(const NDArray &csr, const NDArray &vids,
-                            const NDArray &out_csr) {
+                            const NDArray &out_csr, size_t graph_size) {
   TBlob in_idx_data = csr.aux_data(csr::kIdx);
   TBlob in_ptr_data = csr.aux_data(csr::kIndPtr);
   const dgl_id_t *indices_in = in_idx_data.dptr<dgl_id_t>();
   const dgl_id_t *indptr_in = in_ptr_data.dptr<dgl_id_t>();
   const dgl_id_t *row_ids = vids.data().dptr<dgl_id_t>();
   size_t num_elems = csr.aux_data(csr::kIdx).shape_.Size();
-  size_t num_vids = vids.shape()[0];
-  CHECK_EQ(num_vids, in_ptr_data.shape_[0] - 1);
+  CHECK_EQ(vids.shape()[0], in_ptr_data.shape_[0] - 1);
 
   // Prepare the Id map from the original graph to the subgraph.
   std::unordered_map<dgl_id_t, dgl_id_t> id_map;
-  id_map.reserve(vids.shape()[0]);
-  for (size_t i = 0; i < num_vids; i++)
+  id_map.reserve(graph_size);
+  for (size_t i = 0; i < graph_size; i++) {
     id_map.insert(std::pair<dgl_id_t, dgl_id_t>(row_ids[i], i));
+    CHECK_NE(row_ids[i], -1);
+  }
 
   TShape nz_shape(1);
   nz_shape[0] = num_elems;
   TShape indptr_shape(1);
-  indptr_shape[0] = out_csr.aux_data(csr::kIndPtr).shape_.Size();
+  CHECK_EQ(out_csr.shape()[0], graph_size);
+  indptr_shape[0] = graph_size + 1;
   CHECK_GE(in_ptr_data.shape_[0], indptr_shape[0]);
 
   out_csr.CheckAndAllocData(nz_shape);
@@ -380,7 +382,7 @@ static void SubgraphCompactComputeExCPU(const nnvm::NodeAttrs& attrs,
   size_t num_g = get_num_graphs(params);
 #pragma omp parallel for
   for (size_t i = 0; i < num_g; i++) {
-    CompactSubgraph(inputs[0], inputs[i + num_g], outputs[i]);
+    CompactSubgraph(inputs[i], inputs[i + num_g], outputs[i], params.graph_sizes[i]);
   }
 }
 
