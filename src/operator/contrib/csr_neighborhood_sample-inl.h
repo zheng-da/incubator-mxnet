@@ -205,41 +205,27 @@ static void GetSample(std::vector<dgl_id_t>& ver_list,
   }
 }
 
-static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
-                                          const OpContext& ctx,
-                                          const std::vector<NDArray>& inputs,
-                                          const std::vector<OpReqType>& req,
-                                          const std::vector<NDArray>& outputs) {
-  CHECK_EQ(inputs.size(), 2U);
-  CHECK_EQ(outputs.size(), 2U);
+static void SampleSubgraph(const NDArray &csr, const NDArray &seed_arr,
+                           const NDArray &sub_csr, const NDArray &sampled_ids,
+                           dgl_id_t num_hops, dgl_id_t num_neighbor,
+                           dgl_id_t max_num_vertices) {
+  size_t num_seeds = seed_arr.shape().Size();
 
-  const NeighborSampleParam& params = 
-    nnvm::get<NeighborSampleParam>(attrs.parsed);
+  CHECK_GE(max_num_vertices, num_seeds);
 
-  // set seed for random sampling
-  srand(time(nullptr));
+  const dgl_id_t* val_list = csr.data().dptr<dgl_id_t>();
+  const dgl_id_t* col_list = csr.aux_data(csr::kIdx).dptr<dgl_id_t>();
+  const dgl_id_t* indptr = csr.aux_data(csr::kIndPtr).dptr<dgl_id_t>();
+  const dgl_id_t* seed = seed_arr.data().dptr<dgl_id_t>();
 
-  dgl_id_t num_hops = params.num_hops;
-  dgl_id_t num_neighbor = params.num_neighbor;
-  dgl_id_t max_num_vertices = params.max_num_vertices;
-
-  size_t seed_num = inputs[1].data().Size();
-
-  CHECK_GE(max_num_vertices, seed_num);
-
-  const dgl_id_t* val_list = inputs[0].data().dptr<dgl_id_t>();
-  const dgl_id_t* col_list = inputs[0].aux_data(csr::kIdx).dptr<dgl_id_t>();
-  const dgl_id_t* indptr = inputs[0].aux_data(csr::kIndPtr).dptr<dgl_id_t>();
-  const dgl_id_t* seed = inputs[1].data().dptr<dgl_id_t>();
-
-  dgl_id_t* out = outputs[0].data().dptr<dgl_id_t>();
+  dgl_id_t* out = sampled_ids.data().dptr<dgl_id_t>();
 
   // BFS traverse the graph and sample vertices
   dgl_id_t sub_vertices_count = 0;
   std::map<dgl_id_t, bool> sub_ver_mp;
   std::queue<ver_node> node_queue;
   // add seed vertices
-  for (size_t i = 0; i < seed_num; ++i) {
+  for (size_t i = 0; i < num_seeds; ++i) {
     ver_node node;
     node.vertex_id = seed[i];
     node.level = 0;
@@ -341,7 +327,6 @@ static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
   }
 
   // Copy sub_csr_graph to output[1]
-  const NDArray& sub_csr = outputs[1];
   TShape shape_1(1);
   TShape shape_2(1);
   shape_1[0] = sub_val.size();
@@ -358,6 +343,24 @@ static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
   std::copy(sub_val.begin(), sub_val.end(), val_list_out);
   std::copy(sub_col_list.begin(), sub_col_list.end(), col_list_out);
   std::copy(sub_indptr.begin(), sub_indptr.end(), indptr_out);
+}
+
+static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
+                                          const OpContext& ctx,
+                                          const std::vector<NDArray>& inputs,
+                                          const std::vector<OpReqType>& req,
+                                          const std::vector<NDArray>& outputs) {
+  CHECK_EQ(inputs.size(), 2U);
+  CHECK_EQ(outputs.size(), 2U);
+
+  const NeighborSampleParam& params =
+    nnvm::get<NeighborSampleParam>(attrs.parsed);
+
+  // set seed for random sampling
+  srand(time(nullptr));
+
+  SampleSubgraph(inputs[0], inputs[1], outputs[1], outputs[0],
+                 params.num_hops, params.num_neighbor, params.max_num_vertices);
 }
 
 }  // op
