@@ -316,7 +316,7 @@ struct SubgraphCompactParam : public dmlc::Parameter<SubgraphCompactParam> {
   nnvm::Tuple<nnvm::dim_t> graph_sizes;
   DMLC_DECLARE_PARAMETER(SubgraphCompactParam) {
     DMLC_DECLARE_FIELD(num_args).set_lower_bound(2)
-    .describe("Number of input arguments, including all symbol inputs.");
+    .describe("Number of input arguments.");
     DMLC_DECLARE_FIELD(return_mapping)
     .describe("Return mapping of vid and eid between the subgraph and the parent graph.");
     DMLC_DECLARE_FIELD(graph_sizes)

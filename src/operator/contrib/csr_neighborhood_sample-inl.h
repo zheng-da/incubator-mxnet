@@ -70,8 +70,11 @@ struct ver_node {
 
 // How to set the default value?
 struct NeighborSampleParam : public dmlc::Parameter<NeighborSampleParam> {
+  int num_args;
   dgl_id_t num_hops, num_neighbor, max_num_vertices;
   DMLC_DECLARE_PARAMETER(NeighborSampleParam) {
+    DMLC_DECLARE_FIELD(num_args).set_lower_bound(2)
+    .describe("Number of input arguments.");
     DMLC_DECLARE_FIELD(num_hops)
       .set_default(1)
       .describe("Number of hops.");
@@ -89,19 +92,23 @@ static bool CSRNeighborSampleStorageType(const nnvm::NodeAttrs& attrs,
                                          DispatchMode* dispatch_mode,
                                          std::vector<int> *in_attrs,
                                          std::vector<int> *out_attrs) {
-  CHECK_EQ(in_attrs->size(), 2);
-  CHECK_EQ(out_attrs->size(), 2);
+  const NeighborSampleParam& params = nnvm::get<NeighborSampleParam>(attrs.parsed);
+  size_t num_subgraphs = params.num_args - 1;
+  CHECK_EQ(out_attrs->size(), 2 * num_subgraphs);
 
   CHECK_EQ(in_attrs->at(0), mxnet::kCSRStorage);
-  CHECK_EQ(in_attrs->at(1), mxnet::kDefaultStorage);
+  for (size_t i = 0; i < num_subgraphs; i++)
+    CHECK_EQ(in_attrs->at(1 + i), mxnet::kDefaultStorage);
 
   bool success = true;
-  if (!type_assign(&(*out_attrs)[0], mxnet::kDefaultStorage)) {
-    success = false;
-  }
-  if (!type_assign(&(*out_attrs)[1], mxnet::kCSRStorage)) {
-    success = false;
-  }
+  for (size_t i = 0; i < num_subgraphs; i++)
+    if (!type_assign(&(*out_attrs)[i], mxnet::kDefaultStorage)) {
+      success = false;
+    }
+  for (size_t i = 0; i < num_subgraphs; i++)
+    if (!type_assign(&(*out_attrs)[i + num_subgraphs], mxnet::kCSRStorage)) {
+      success = false;
+    }
 
   *dispatch_mode = DispatchMode::kFComputeEx;
 
@@ -111,42 +118,52 @@ static bool CSRNeighborSampleStorageType(const nnvm::NodeAttrs& attrs,
 static bool CSRNeighborSampleShape(const nnvm::NodeAttrs& attrs,
                                    std::vector<TShape> *in_attrs,
                                    std::vector<TShape> *out_attrs) {
-  CHECK_EQ(in_attrs->size(), 2);
-  CHECK_EQ(out_attrs->size(), 2);
+  const NeighborSampleParam& params = nnvm::get<NeighborSampleParam>(attrs.parsed);
+  size_t num_subgraphs = params.num_args - 1;
+  CHECK_EQ(out_attrs->size(), 2 * num_subgraphs);
 
   CHECK_EQ(in_attrs->at(0).ndim(), 2U);
-  CHECK_EQ(in_attrs->at(1).ndim(), 1U);
-  // Check the graph shape
+  for (size_t i = 0; i < num_subgraphs; i++) {
+    CHECK_EQ(in_attrs->at(1 + i).ndim(), 1U);
+  }
   CHECK_EQ(in_attrs->at(0)[0], in_attrs->at(0)[1]);
-
-  const NeighborSampleParam& params = 
-    nnvm::get<NeighborSampleParam>(attrs.parsed);
 
   TShape out_shape(1);
   out_shape[0] = params.max_num_vertices;
-  SHAPE_ASSIGN_CHECK(*out_attrs, 0, out_shape);
+  bool success = true;
+  for (size_t i = 0; i < num_subgraphs; i++) {
+    SHAPE_ASSIGN_CHECK(*out_attrs, i, out_shape);
+    success = success && out_attrs->at(i).ndim() != 0U &&
+         out_attrs->at(i).Size() != 0U;
+  }
 
   TShape out_csr_shape(2);
   out_csr_shape[0] = params.max_num_vertices;
   out_csr_shape[1] = in_attrs->at(0)[1];
-  SHAPE_ASSIGN_CHECK(*out_attrs, 1, out_csr_shape);
+  for (size_t i = 0; i < num_subgraphs; i++) {
+    SHAPE_ASSIGN_CHECK(*out_attrs, i + num_subgraphs, out_csr_shape);
+    success = success && out_attrs->at(i + num_subgraphs).ndim() != 0U &&
+         out_attrs->at(i + num_subgraphs).Size() != 0U;
+  }
 
-  return out_attrs->at(0).ndim() != 0U &&
-         out_attrs->at(0).Size() != 0U &&
-         out_attrs->at(1).ndim() != 0U &&
-         out_attrs->at(1).Size() != 0U;
+  return success;
 }
 
 static bool CSRNeighborSampleType(const nnvm::NodeAttrs& attrs,
                                   std::vector<int> *in_attrs,
                                   std::vector<int> *out_attrs) {
-  CHECK_EQ(in_attrs->size(), 2);
-  CHECK_EQ(out_attrs->size(), 2);
+  const NeighborSampleParam& params = nnvm::get<NeighborSampleParam>(attrs.parsed);
+  size_t num_subgraphs = params.num_args - 1;
+  CHECK_EQ(out_attrs->size(), 2 * num_subgraphs);
 
-  TYPE_ASSIGN_CHECK(*out_attrs, 0, in_attrs->at(1));
-  TYPE_ASSIGN_CHECK(*out_attrs, 1, in_attrs->at(0));
+  bool success = true;
+  for (size_t i = 0; i < num_subgraphs; i++) {
+    TYPE_ASSIGN_CHECK(*out_attrs, i, in_attrs->at(1));
+    TYPE_ASSIGN_CHECK(*out_attrs, i + num_subgraphs, in_attrs->at(0));
+    success = success && out_attrs->at(i) != -1 && out_attrs->at(i + num_subgraphs) != -1;
+  }
 
-  return out_attrs->at(0) != -1;
+  return success;
 }
 
 static void GetSrcList(const dgl_id_t* val_list,
@@ -350,17 +367,18 @@ static void CSRNeighborSampleComputeExCPU(const nnvm::NodeAttrs& attrs,
                                           const std::vector<NDArray>& inputs,
                                           const std::vector<OpReqType>& req,
                                           const std::vector<NDArray>& outputs) {
-  CHECK_EQ(inputs.size(), 2U);
-  CHECK_EQ(outputs.size(), 2U);
-
   const NeighborSampleParam& params =
     nnvm::get<NeighborSampleParam>(attrs.parsed);
+  size_t num_subgraphs = inputs.size() - 1;
+  CHECK_EQ(outputs.size(), 2 * num_subgraphs);
 
   // set seed for random sampling
   srand(time(nullptr));
 
-  SampleSubgraph(inputs[0], inputs[1], outputs[1], outputs[0],
-                 params.num_hops, params.num_neighbor, params.max_num_vertices);
+#pragma omp parallel for
+  for (size_t i = 0; i < num_subgraphs; i++)
+    SampleSubgraph(inputs[0], inputs[i + 1], outputs[i + num_subgraphs], outputs[i],
+                   params.num_hops, params.num_neighbor, params.max_num_vertices);
 }
 
 }  // op

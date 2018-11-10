@@ -81,14 +81,22 @@ DMLC_REGISTER_PARAMETER(NeighborSampleParam);
 NNVM_REGISTER_OP(_contrib_neighbor_sample)
 .MXNET_DESCRIBE("")
 .set_attr_parser(ParamParser<NeighborSampleParam>)
-.set_num_inputs(2)
-.set_num_outputs(2)
+.set_num_inputs([](const NodeAttrs& attrs) {
+  const NeighborSampleParam& params = nnvm::get<NeighborSampleParam>(attrs.parsed);
+  return params.num_args;
+})
+.set_num_outputs([](const NodeAttrs& attrs) {
+  const NeighborSampleParam& params = nnvm::get<NeighborSampleParam>(attrs.parsed);
+  size_t num_subgraphs = params.num_args - 1;
+  return num_subgraphs * 2;
+})
 .set_attr<FInferStorageType>("FInferStorageType", CSRNeighborSampleStorageType)
 .set_attr<nnvm::FInferShape>("FInferShape", CSRNeighborSampleShape)
 .set_attr<nnvm::FInferType>("FInferType", CSRNeighborSampleType)
 .set_attr<FComputeEx>("FComputeEx<cpu>", CSRNeighborSampleComputeExCPU)
 .add_argument("csr_matrix", "NDArray-or-Symbol", "csr matrix")
-.add_argument("seed_array", "NDArray-or-Symbol", "seed vertices")
+.add_argument("seed_arrays", "NDArray-or-Symbol[]", "seed vertices")
+.set_attr<std::string>("key_var_num_args", "num_args")
 .add_arguments(NeighborSampleParam::__FIELDS__());    
 
 }  // op
