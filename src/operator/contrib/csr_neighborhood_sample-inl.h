@@ -176,23 +176,18 @@ static void GetSample(std::vector<dgl_id_t>& ver_list,
     return;
   }
   // Make sample
-  std::unordered_map<size_t, bool> mp;
-  size_t sample_count = 0;
-  for (;;) {
+  std::unordered_set<size_t> sampled_idxs;
+  // TODO it's going to be slow if ver_list doesn't have many elements.
+  while (sampled_idxs.size() < max_num_neighbor) {
     // rand_num = [0, ver_list.size()-1]
     size_t rand_num = rand() % ver_list.size(); 
-    auto got = mp.find(rand_num);
-    if (got != mp.end() && mp[rand_num]) {
-      // re-sample
-      continue;
-    }
-    mp[rand_num] = true;
-    out.push_back(ver_list[rand_num]);
-    out_edge.push_back(edge_list[rand_num]);
-    sample_count++;
-    if (sample_count == max_num_neighbor) {
-      break;
-    }
+    sampled_idxs.insert(rand_num);
+  }
+  std::vector<size_t> sorted_idxs(sampled_idxs.begin(), sampled_idxs.end());
+  std::sort(sorted_idxs.begin(), sorted_idxs.end());
+  for (auto idx : sorted_idxs) {
+    out.push_back(ver_list[idx]);
+    out_edge.push_back(edge_list[idx]);
   }
 }
 
