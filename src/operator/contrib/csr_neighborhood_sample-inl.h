@@ -129,7 +129,9 @@ static bool CSRNeighborSampleShape(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(in_attrs->at(0)[0], in_attrs->at(0)[1]);
 
   TShape out_shape(1);
-  out_shape[0] = params.max_num_vertices;
+  // We use the last element to store the actual number of vertices in the
+  // subgraph.
+  out_shape[0] = params.max_num_vertices + 1;
   bool success = true;
   for (size_t i = 0; i < num_subgraphs; i++) {
     SHAPE_ASSIGN_CHECK(*out_attrs, i, out_shape);
@@ -306,17 +308,20 @@ static void SampleSubgraph(const NDArray &csr, const NDArray &seed_arr,
   }
 
   // Copy sub_ver_mp to output[0]
-  dgl_id_t idx = 0;
+  size_t idx = 0;
   for (auto& data: sub_ver_mp) {
     if (data.second) {
       *(out+idx) = data.first;
       idx++;
     }
   }
+  CHECK_EQ(idx, sub_ver_mp.size());
   // The rest data will be set to -1
   for (dgl_id_t i = idx; i < max_num_vertices; ++i) {
     *(out+i) = -1;
   }
+  // The last element stores the actual number of vertices in the subgraph.
+  out[max_num_vertices] = sub_ver_mp.size();
 
   // Construct sub_csr_graph
   std::vector<dgl_id_t> sub_val;

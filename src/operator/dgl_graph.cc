@@ -339,7 +339,9 @@ static void CompactSubgraph(const NDArray &csr, const NDArray &vids,
   const dgl_id_t *indptr_in = in_ptr_data.dptr<dgl_id_t>();
   const dgl_id_t *row_ids = vids.data().dptr<dgl_id_t>();
   size_t num_elems = csr.aux_data(csr::kIdx).shape_.Size();
-  CHECK_EQ(vids.shape()[0], in_ptr_data.shape_[0] - 1);
+  // The last element in vids is the actual number of vertices in the subgraph.
+  CHECK_EQ(vids.shape()[0], in_ptr_data.shape_[0]);
+  CHECK_EQ((size_t) row_ids[vids.shape()[0] - 1], graph_size);
 
   // Prepare the Id map from the original graph to the subgraph.
   std::unordered_map<dgl_id_t, dgl_id_t> id_map;
@@ -425,7 +427,7 @@ static bool SubgraphCompactShape(const nnvm::NodeAttrs& attrs,
   // These are the vertex Ids in the original graph.
   for (size_t i = 0; i < num_g; i++) {
     CHECK_EQ(in_attrs->at(i + num_g).ndim(), 1U);
-    CHECK_GE(in_attrs->at(i)[0], params.graph_sizes[i]);
+    CHECK_GE(in_attrs->at(i + num_g)[0], params.graph_sizes[i]);
   }
 
   for (size_t i = 0; i < num_g; i++) {
