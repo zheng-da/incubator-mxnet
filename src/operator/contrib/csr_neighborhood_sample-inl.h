@@ -224,6 +224,14 @@ static void GetSample(std::vector<dgl_id_t>& ver_list,
   }
 }
 
+struct neigh_list {
+  std::vector<dgl_id_t> neighs;
+  std::vector<dgl_id_t> edges;
+  neigh_list(const std::vector<dgl_id_t> &_neighs,
+             const std::vector<dgl_id_t> &_edges): neighs(_neighs), edges(_edges) {
+  }
+};
+
 static void SampleSubgraph(const NDArray &csr, const NDArray &seed_arr,
                            const NDArray &sub_csr, const NDArray &sampled_ids,
                            dgl_id_t num_hops, dgl_id_t num_neighbor,
@@ -236,12 +244,11 @@ static void SampleSubgraph(const NDArray &csr, const NDArray &seed_arr,
   const dgl_id_t* col_list = csr.aux_data(csr::kIdx).dptr<dgl_id_t>();
   const dgl_id_t* indptr = csr.aux_data(csr::kIndPtr).dptr<dgl_id_t>();
   const dgl_id_t* seed = seed_arr.data().dptr<dgl_id_t>();
-
   dgl_id_t* out = sampled_ids.data().dptr<dgl_id_t>();
 
   // BFS traverse the graph and sample vertices
   dgl_id_t sub_vertices_count = 0;
-  std::map<dgl_id_t, bool> sub_ver_mp;
+  std::unordered_set<dgl_id_t> sub_ver_mp;
   std::queue<ver_node> node_queue;
   // add seed vertices
   for (size_t i = 0; i < num_seeds; ++i) {
@@ -249,7 +256,7 @@ static void SampleSubgraph(const NDArray &csr, const NDArray &seed_arr,
     node.vertex_id = seed[i];
     node.level = 0;
     node_queue.push(node);
-    sub_ver_mp[node.vertex_id] = true;
+    sub_ver_mp.insert(node.vertex_id);
     sub_vertices_count++;
   }
 
@@ -257,10 +264,9 @@ static void SampleSubgraph(const NDArray &csr, const NDArray &seed_arr,
   std::vector<dgl_id_t> tmp_edge_list;
   std::vector<dgl_id_t> tmp_sampled_src_list;
   std::vector<dgl_id_t> tmp_sampled_edge_list;
+  std::unordered_map<dgl_id_t, neigh_list> neigh_mp;
 
-  std::map<dgl_id_t, std::vector<dgl_id_t> > ver_mp;
-  std::map<dgl_id_t, std::vector<dgl_id_t> > edge_mp;
-
+  size_t num_edges = 0;
   while (!node_queue.empty()) {
     ver_node& cur_node = node_queue.front();
     if (cur_node.level < num_hops) {
@@ -283,9 +289,10 @@ static void SampleSubgraph(const NDArray &csr, const NDArray &seed_arr,
                 num_neighbor, 
                 tmp_sampled_src_list,
                 tmp_sampled_edge_list);
-
-      ver_mp[dst_id] = tmp_sampled_src_list;
-      edge_mp[dst_id] = tmp_sampled_edge_list;
+      neigh_mp.insert(std::pair<dgl_id_t, neigh_list>(dst_id,
+                                                      neigh_list(tmp_sampled_src_list,
+                                                                 tmp_sampled_edge_list)));
+      num_edges += tmp_sampled_src_list.size();
       
       sub_vertices_count++;
       if (sub_vertices_count == max_num_vertices) {
@@ -293,14 +300,14 @@ static void SampleSubgraph(const NDArray &csr, const NDArray &seed_arr,
       }
 
       for (size_t i = 0; i < tmp_sampled_src_list.size(); ++i) {
-        auto got = sub_ver_mp.find(tmp_sampled_src_list[i]);
-        if (got == sub_ver_mp.end()) {
-          sub_ver_mp[tmp_sampled_src_list[i]] = true;
+        auto ret = sub_ver_mp.insert(tmp_sampled_src_list[i]);
+        if (ret.second) {
           sub_vertices_count++;
           ver_node new_node;
           new_node.vertex_id = tmp_sampled_src_list[i];
           new_node.level = cur_node.level + 1;
-          node_queue.push(new_node);
+          if (new_node.level < num_hops)
+            node_queue.push(new_node);
         }
       }
     }
@@ -310,12 +317,11 @@ static void SampleSubgraph(const NDArray &csr, const NDArray &seed_arr,
   // Copy sub_ver_mp to output[0]
   size_t idx = 0;
   for (auto& data: sub_ver_mp) {
-    if (data.second) {
-      *(out+idx) = data.first;
-      idx++;
-    }
+    *(out+idx) = data;
+    idx++;
   }
-  CHECK_EQ(idx, sub_ver_mp.size());
+  size_t num_vertices = sub_ver_mp.size();
+  std::sort(out, out + num_vertices);
   // The rest data will be set to -1
   for (dgl_id_t i = idx; i < max_num_vertices; ++i) {
     *(out+i) = -1;
@@ -324,24 +330,27 @@ static void SampleSubgraph(const NDArray &csr, const NDArray &seed_arr,
   out[max_num_vertices] = sub_ver_mp.size();
 
   // Construct sub_csr_graph
+  // TODO reduce the memory copy
   std::vector<dgl_id_t> sub_val;
   std::vector<dgl_id_t> sub_col_list;
   std::vector<dgl_id_t> sub_indptr(max_num_vertices+1, 0);
+  sub_val.reserve(num_edges);
+  sub_col_list.reserve(num_edges);
 
-  size_t index = 1;
-  for (auto& data: sub_ver_mp) {
-    dgl_id_t dst_id = data.first;
-    auto edge = edge_mp.find(dst_id);
-    auto vert = ver_mp.find(dst_id);
-    if (edge != edge_mp.end() && vert != ver_mp.end()) {
-      CHECK_EQ(edge->second.size(), vert->second.size());
-      for (auto& val : edge->second) {
+  for (size_t i = 0, index = 1; i < num_vertices; i++) {
+    dgl_id_t dst_id = *(out + i);
+    auto it = neigh_mp.find(dst_id);
+    if (it != neigh_mp.end()) {
+      const auto &edges = it->second.edges;
+      const auto &neighs = it->second.neighs;
+      CHECK_EQ(edges.size(), neighs.size());
+      for (auto& val : edges) {
         sub_val.push_back(val);
       }
-      for (auto& val : vert->second) {
+      for (auto& val : neighs) {
         sub_col_list.push_back(val);
       }
-      sub_indptr[index] = sub_indptr[index-1] + edge->second.size();
+      sub_indptr[index] = sub_indptr[index-1] + edges.size();
     } else {
       sub_indptr[index] = sub_indptr[index-1];
     }
