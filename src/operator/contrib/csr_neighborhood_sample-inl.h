@@ -198,7 +198,6 @@ static void GetSample(std::vector<dgl_id_t>& ver_list,
   std::vector<size_t> sorted_idxs(max_num_neighbor);
   if (ver_list.size() > max_num_neighbor * 10) {
     std::unordered_set<size_t> sampled_idxs;
-    // TODO it's going to be slow if ver_list doesn't have many elements.
     while (sampled_idxs.size() < max_num_neighbor) {
       // rand_num = [0, ver_list.size()-1]
       size_t rand_num = rand() % ver_list.size();
