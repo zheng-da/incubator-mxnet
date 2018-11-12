@@ -316,7 +316,7 @@ struct SubgraphCompactParam : public dmlc::Parameter<SubgraphCompactParam> {
   nnvm::Tuple<nnvm::dim_t> graph_sizes;
   DMLC_DECLARE_PARAMETER(SubgraphCompactParam) {
     DMLC_DECLARE_FIELD(num_args).set_lower_bound(2)
-    .describe("Number of input arguments, including all symbol inputs.");
+    .describe("Number of input arguments.");
     DMLC_DECLARE_FIELD(return_mapping)
     .describe("Return mapping of vid and eid between the subgraph and the parent graph.");
     DMLC_DECLARE_FIELD(graph_sizes)
@@ -332,26 +332,30 @@ static inline size_t get_num_graphs(const SubgraphCompactParam &params) {
 }
 
 static void CompactSubgraph(const NDArray &csr, const NDArray &vids,
-                            const NDArray &out_csr) {
+                            const NDArray &out_csr, size_t graph_size) {
   TBlob in_idx_data = csr.aux_data(csr::kIdx);
   TBlob in_ptr_data = csr.aux_data(csr::kIndPtr);
   const dgl_id_t *indices_in = in_idx_data.dptr<dgl_id_t>();
   const dgl_id_t *indptr_in = in_ptr_data.dptr<dgl_id_t>();
   const dgl_id_t *row_ids = vids.data().dptr<dgl_id_t>();
   size_t num_elems = csr.aux_data(csr::kIdx).shape_.Size();
-  size_t num_vids = vids.shape()[0];
-  CHECK_EQ(num_vids, in_ptr_data.shape_[0] - 1);
+  // The last element in vids is the actual number of vertices in the subgraph.
+  CHECK_EQ(vids.shape()[0], in_ptr_data.shape_[0]);
+  CHECK_EQ((size_t) row_ids[vids.shape()[0] - 1], graph_size);
 
   // Prepare the Id map from the original graph to the subgraph.
   std::unordered_map<dgl_id_t, dgl_id_t> id_map;
-  id_map.reserve(vids.shape()[0]);
-  for (size_t i = 0; i < num_vids; i++)
+  id_map.reserve(graph_size);
+  for (size_t i = 0; i < graph_size; i++) {
     id_map.insert(std::pair<dgl_id_t, dgl_id_t>(row_ids[i], i));
+    CHECK_NE(row_ids[i], -1);
+  }
 
   TShape nz_shape(1);
   nz_shape[0] = num_elems;
   TShape indptr_shape(1);
-  indptr_shape[0] = out_csr.aux_data(csr::kIndPtr).shape_.Size();
+  CHECK_EQ(out_csr.shape()[0], graph_size);
+  indptr_shape[0] = graph_size + 1;
   CHECK_GE(in_ptr_data.shape_[0], indptr_shape[0]);
 
   out_csr.CheckAndAllocData(nz_shape);
@@ -380,7 +384,7 @@ static void SubgraphCompactComputeExCPU(const nnvm::NodeAttrs& attrs,
   size_t num_g = get_num_graphs(params);
 #pragma omp parallel for
   for (size_t i = 0; i < num_g; i++) {
-    CompactSubgraph(inputs[0], inputs[i + num_g], outputs[i]);
+    CompactSubgraph(inputs[i], inputs[i + num_g], outputs[i], params.graph_sizes[i]);
   }
 }
 
@@ -423,7 +427,7 @@ static bool SubgraphCompactShape(const nnvm::NodeAttrs& attrs,
   // These are the vertex Ids in the original graph.
   for (size_t i = 0; i < num_g; i++) {
     CHECK_EQ(in_attrs->at(i + num_g).ndim(), 1U);
-    CHECK_GE(in_attrs->at(i)[0], params.graph_sizes[i]);
+    CHECK_GE(in_attrs->at(i + num_g)[0], params.graph_sizes[i]);
   }
 
   for (size_t i = 0; i < num_g; i++) {
