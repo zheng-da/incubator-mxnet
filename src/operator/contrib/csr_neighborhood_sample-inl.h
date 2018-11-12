@@ -293,6 +293,7 @@ static void SampleSubgraph(const NDArray &csr, const NDArray &seed_arr,
                                                                  tmp_sampled_edge_list)));
       num_edges += tmp_sampled_src_list.size();
       
+      // TODO The code doesn't limit the maximal number of vertices correctly.
       sub_vertices_count++;
       if (sub_vertices_count == max_num_vertices) {
         break;
