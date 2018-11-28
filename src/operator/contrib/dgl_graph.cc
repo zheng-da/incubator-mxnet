@@ -712,6 +712,7 @@ static void SampleSubgraph(const NDArray &csr,
   dgl_id_t* indptr_out = sub_csr.aux_data(0).dptr<dgl_id_t>();
 
   size_t collected_nedges = 0;
+  indptr_out[0] = 0;
   for (size_t i = 0, index = 1; i < num_vertices; i++) {
     dgl_id_t dst_id = *(out + i);
     auto it = neigh_mp.find(dst_id);
