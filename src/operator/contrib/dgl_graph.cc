@@ -459,6 +459,108 @@ The storage type of ``edge_id`` output depends on storage types of inputs
 .add_argument("u", "NDArray-or-Symbol", "u ndarray")
 .add_argument("v", "NDArray-or-Symbol", "v ndarray");
 
+///////////////////////// Map vid ///////////////////////////
+
+inline bool DGLVidMapShape(const nnvm::NodeAttrs& attrs,
+                           std::vector<TShape>* in_attrs,
+                           std::vector<TShape>* out_attrs) {
+  CHECK_EQ(in_attrs->size(), 2U);
+  CHECK_EQ(out_attrs->size(), 1U);
+  CHECK_EQ(in_attrs->at(0).ndim(), 1U);
+  CHECK_EQ(in_attrs->at(1).ndim(), 1U);
+
+  SHAPE_ASSIGN_CHECK(*out_attrs, 0, in_attrs->at(1));
+  SHAPE_ASSIGN_CHECK(*in_attrs, 1, out_attrs->at(0));
+  return out_attrs->at(0).ndim() != 0U && out_attrs->at(0).Size() != 0U;
+}
+
+inline bool DGLVidMapType(const nnvm::NodeAttrs& attrs,
+                          std::vector<int>* in_attrs,
+                          std::vector<int>* out_attrs) {
+  CHECK_EQ(in_attrs->size(), 2U);
+  CHECK_EQ(out_attrs->size(), 1U);
+
+  TYPE_ASSIGN_CHECK(*out_attrs, 0, in_attrs->at(0));
+  TYPE_ASSIGN_CHECK(*in_attrs, 0, out_attrs->at(0));
+  return out_attrs->at(0) != -1;
+}
+
+inline bool DGLVidMapStorageType(const nnvm::NodeAttrs& attrs,
+                                 const int dev_mask,
+                                 DispatchMode* dispatch_mode,
+                                 std::vector<int>* in_attrs,
+                                 std::vector<int>* out_attrs) {
+  CHECK_EQ(in_attrs->size(), 2U);
+  CHECK_EQ(out_attrs->size(), 1U);
+  CHECK_EQ(in_attrs->at(0), kDefaultStorage);
+  CHECK_EQ(in_attrs->at(1), kDefaultStorage);
+  int& out_stype = out_attrs->at(0);
+  bool dispatched = storage_type_assign(&out_stype, kDefaultStorage,
+                                        dispatch_mode, DispatchMode::kFCompute);
+  if (!dispatched) {
+    LOG(ERROR) << "Cannot dispatch dgl_subgraph_vid_map.";
+  }
+  return dispatched;
+}
+
+void DGLVidMapForward(const nnvm::NodeAttrs& attrs,
+                      const OpContext& ctx,
+                      const std::vector<TBlob>& inputs,
+                      const std::vector<OpReqType>& req,
+                      const std::vector<TBlob>& outputs) {
+  const auto parent_len = inputs[0].shape_[0];
+  const auto query_len = inputs[1].shape_[0];
+  const dgl_id_t *parent_data = inputs[0].dptr<dgl_id_t>();
+  const dgl_id_t *query_data = inputs[1].dptr<dgl_id_t>();
+  dgl_id_t* rst_data = outputs[0].dptr<dgl_id_t>();
+
+  const bool is_sorted = std::is_sorted(parent_data, parent_data + parent_len);
+  if (is_sorted) {
+#pragma omp parallel for
+    for (int64_t i = 0; i < query_len; i++) {
+      const dgl_id_t id = query_data[i];
+      const auto it = std::find(parent_data, parent_data + parent_len, id);
+      // If the vertex Id doesn't exist, the vid in the subgraph is -1.
+      if (it != parent_data + parent_len) {
+        rst_data[i] = it - parent_data;
+      } else {
+        rst_data[i] = -1;
+      }
+    }
+  } else {
+    std::unordered_map<dgl_id_t, dgl_id_t> parent_map;
+    for (int64_t i = 0; i < parent_len; i++) {
+      const dgl_id_t id = parent_data[i];
+      parent_map[id] = i;
+    }
+    for (int64_t i = 0; i < query_len; i++) {
+      const dgl_id_t id = query_data[i];
+      auto it = parent_map.find(id);
+      // If the vertex Id doesn't exist, the vid in the subgraph is -1.
+      if (it != parent_map.end()) {
+        rst_data[i] = it->second;
+      } else {
+        rst_data[i] = -1;
+      }
+    }
+  }
+}
+
+NNVM_REGISTER_OP(_contrib_dgl_subgraph_vid_map)
+.describe(R"code()code" ADD_FILELINE)
+.set_num_inputs(2)
+.set_num_outputs(1)
+.set_attr<nnvm::FListInputNames>("FListInputNames",
+  [](const NodeAttrs& attrs) {
+    return std::vector<std::string>{"parent_vid", "query"};
+  })
+.set_attr<nnvm::FInferShape>("FInferShape", DGLVidMapShape)
+.set_attr<nnvm::FInferType>("FInferType", DGLVidMapType)
+.set_attr<FInferStorageType>("FInferStorageType", DGLVidMapStorageType)
+.set_attr<FCompute>("FCompute<cpu>", DGLVidMapForward)
+.add_argument("parent_vid", "NDArray-or-Symbol", "Parent vid ndarray")
+.add_argument("query", "NDArray-or-Symbol", "The query ndarray");
+
 
 }  // namespace op
 }  // namespace mxnet
