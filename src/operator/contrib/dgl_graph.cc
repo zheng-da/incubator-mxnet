@@ -40,7 +40,7 @@ typedef int64_t dgl_id_t;
 
 ////////////////////////////// Graph Sampling ///////////////////////////////
 
-unsigned int seed = 123;
+static thread_local unsigned int seed = 123;
 
 /*
  * This is used for BFS traversal
