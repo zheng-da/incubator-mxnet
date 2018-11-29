@@ -39,11 +39,28 @@ def test_ndarray_zeros():
     assert a[-1][0] == 0
     assert a.shape == (LARGE_X, SMALL_Y)
     assert a.size == LARGE_SIZE
+    b = nd.zeros_like(a)
+    assert b[-1][0] == 0
+    assert b.shape == (LARGE_X, SMALL_Y)
+    assert b.size == LARGE_SIZE
 
 def test_ndarray_ones():
     a = nd.ones(shape=(LARGE_X, SMALL_Y))
     assert a[-1][0] == 1
     assert nd.sum(a).asnumpy() == LARGE_SIZE
+    b = nd.ones_like(a)
+    assert b[-1][0] == 1
+    assert b.shape == (LARGE_X, SMALL_Y)
+    assert b.size == LARGE_SIZE
+
+def test_ndarray_convert():
+    a = nd.zeros(shape=(LARGE_X, SMALL_Y))
+    b = a.astype(np.int32)
+    b.wait_to_read()
+    assert b.dtype == np.int32
+    b = a.tostype('row_sparse')
+    b.wait_to_read()
+    assert isinstance(b, mx.nd.sparse.RowSparseNDArray)
 
 def test_ndarray_random_uniform():
     a = nd.random.uniform(shape=(LARGE_X, SMALL_Y))
@@ -62,10 +79,31 @@ def test_elementwise():
     assert np.sum(res[-1].asnumpy() == 2) == a.shape[1]
     res = nd.sqrt(a + 3)
     assert np.sum(res[-1].asnumpy() == 2) == a.shape[1]
+    b += 1
+    assert np.sum(b[-1].asnumpy() == 2) == b.shape[1]
+
+    b = nd.arange(0, LARGE_X).reshape(LARGE_X, 1)
+    b = nd.broadcast_to(b, shape=(b.shape[0], SMALL_Y))
+    res = b > 100
+    assert np.sum(res[-1].asnumpy() == 1) == b.shape[1]
+
+    res = mx.nd.Activation(a, act_type='relu')
+    assert np.sum(res[-1].asnumpy() == 1) == b.shape[1]
+
+# Fails
+def test_where():
+    a = nd.ones(shape=(LARGE_X, SMALL_Y))
+    b = nd.arange(0, LARGE_X).reshape(LARGE_X, 1)
+    b = nd.broadcast_to(b, shape=(b.shape[0], SMALL_Y))
+    res = nd.where(b > 100, a, b)
+    assert np.sum(res[-1].asnumpy() == 1) == b.shape[1]
 
 def test_reduce():
     a = nd.ones(shape=(LARGE_X, SMALL_Y)) 
     assert nd.sum(a).asnumpy() == a.shape[0] * a.shape[1]
+    s = nd.sum(a, axis=0)
+    assert np.sum(s.asnumpy() == a.shape[0]) == len(s)
+    assert nd.norm(a, ord=1).asnumpy() == a.shape[0] * a.shape[1]
 
 def test_dot():
     a = nd.ones(shape=(LARGE_X, SMALL_Y)) 
@@ -92,6 +130,62 @@ def test_clip():
     b = nd.broadcast_to(a, shape=(a.shape[0], SMALL_Y))
     res = nd.clip(b, a_min=100, a_max=1000)
     assert np.sum(res[-1].asnumpy() == 1000) == b.shape[1]
+
+# Fails
+def test_transpose():
+    a = nd.arange(0, LARGE_X).reshape(LARGE_X, 1)
+    b = nd.broadcast_to(a, shape=(a.shape[0], SMALL_Y))
+    t = b.T
+    assert t.shape == (SMALL_Y, LARGE_X)
+    assert np.sum(t[:,-1].asnumpy() == LARGE_X) == b.shape[1]
+    t = nd.swapaxes(b, dim1=0, dim2=1)
+    assert t.shape == (SMALL_Y, LARGE_X)
+    assert np.sum(t[:,-1].asnumpy() == LARGE_X) == b.shape[1]
+    t = nd.flip(b, axis=0)
+    assert np.sum(t[:,-1].asnumpy() == 0) == b.shape[1]
+
+def test_split():
+    a = nd.arange(0, LARGE_X).reshape(LARGE_X, 1)
+    b = nd.broadcast_to(a, shape=(a.shape[0], SMALL_Y))
+    outs = nd.split(b, num_outputs=10, axis=0)
+    for i, out in enumerate(outs):
+        assert np.sum(out[0].asnumpy() == i * out.shape[0]) == b.shape[1]
+    cat = nd.concat(*outs, dim=0)
+    assert np.sum(cat[-1].asnumpy() == LARGE_X) == cat.shape[1]
+    stack = nd.stack(*outs)
+    assert np.sum(stack[-1,-1,:].asnumpy() == LARGE_X) == b.shape[1]
+
+# Fails
+def test_sort():
+    a = nd.arange(0, LARGE_X).reshape(LARGE_X, 1)
+    b = nd.broadcast_to(a, shape=(a.shape[0], SMALL_Y))
+
+    print("topk")
+    k = nd.topk(b, k=10)
+    assert np.sum(k.asnumpy() == LARGE_X) == 10
+
+    print("argsort")
+    s = nd.argsort(b, is_ascend=False)
+    assert s[0].asnumpy() == LARGE_X * SMALL_Y
+    s = nd.sort(b, axis=0, is_ascend=False)
+    assert np.sum(s[-1].asnumpy() == 0) == b.shape[1]
+
+    print("sort")
+    s = nd.sort(b, is_ascend=False)
+    assert s[0].asnumpy() == LARGE_X
+    s = nd.sort(b, axis=0, is_ascend=False)
+    assert np.sum(s[-1].asnumpy() == 0) == b.shape[1]
+
+def test_argmin():
+    a = nd.arange(0, LARGE_X).reshape(LARGE_X, 1)
+    b = nd.broadcast_to(a, shape=(a.shape[0], SMALL_Y))
+    idx = mx.nd.argmax(b)
+    assert idx.asnumpy() == (LARGE_X * SMALL_Y)
+
+def test_tile():
+    a = nd.arange(0, LARGE_X).reshape(LARGE_X, 1)
+    b = nd.tile(a, reps=(1, SMALL_Y))
+    assert np.sum(b[-1].asnumpy() == LARGE_X) == b.shape[1]
 
 def test_take():
     a = nd.ones(shape=(LARGE_X, SMALL_Y))
@@ -134,6 +228,7 @@ def test_Dense(ctx=mx.cpu(0)):
     res.wait_to_read()
     assert res.shape == (50000000, 100)
 
+# TODO diag, pad, depth_to_space, space_to_depth, softmax, pick, one_hot, ravel_multi_index, unravel_index
 
 if __name__ == '__main__':
     import nose
