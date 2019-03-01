@@ -226,25 +226,30 @@ class KVStoreDist : public KVStoreLocal {
       int key = uniq_keys[i];
       // use the same array for merging to guarantee that pull always happens
       // after the previous push on this key
-      auto& recv_buf = comm_buf_[key];
+      auto recv_buf = &comm_buf_[key];
+      bool broadcast = true;
+      if (grouped_vals[i].size() == 1/* && grouped_vals[i][0].ctx() == */) {
+        recv_buf = grouped_vals[i][0];
+        broadcast = false;
+      }
       const auto storage_type = grouped_vals[i][0]->storage_type();
       CHECK_EQ(storage_type, kDefaultStorage)
                << "Expected stype of value to be kDefaultStorage";
-      if (recv_buf.is_none()) {
+      if (recv_buf->is_none()) {
         // it may happen for the first time a no-rank-0 worker pull the weight.
-        recv_buf = NDArray(grouped_vals[i][0]->shape(), pinned_ctx_,
+        *recv_buf = NDArray(grouped_vals[i][0]->shape(), pinned_ctx_,
                            true, grouped_vals[i][0]->dtype());
       }
       auto pull_from_servers = [this, key, recv_buf](
           RunContext rctx, Engine::CallbackOnComplete cb) {
         // convert to ps keys
-        size_t size = recv_buf.shape().Size();
-        const int dtype = recv_buf.dtype();
+        size_t size = recv_buf->shape().Size();
+        const int dtype = recv_buf->dtype();
         const int num_bytes = mshadow::mshadow_sizeof(dtype);
         PSKV& pskv = (gradient_compression_->get_type() == CompressionType::kNone) ?
                       EncodeDefaultKey(key, size, num_bytes) :
                       EncodeCompressedKey(key, size, false, num_bytes);
-        char* data = static_cast<char*> (recv_buf.data().dptr_);
+        char* data = static_cast<char*> (recv_buf->data().dptr_);
         // false means not to delete data when SArray is deleted
         auto vals = new ps::SArray<char>(data, size * num_bytes, false);
         // issue pull
@@ -259,12 +264,13 @@ class KVStoreDist : public KVStoreLocal {
           pull_from_servers,
           pinned_ctx_,
           {},
-          {recv_buf.var()},
+          {recv_buf->var()},
           FnProperty::kNormal,
           priority,
           "KVStoreDistDefaultStoragePull");
 
-      comm_->Broadcast(key, recv_buf, grouped_vals[i], priority);
+      if (broadcast)
+        comm_->Broadcast(key, *recv_buf, grouped_vals[i], priority);
     }
   }
 
@@ -279,32 +285,37 @@ class KVStoreDist : public KVStoreLocal {
       int key = uniq_keys[i];
       // use the same array for merging to guarantee that pull always happens
       // after the previous push on this key
-      auto& recv_buf = comm_buf_[key];
+      auto recv_buf = &comm_buf_[key];
       auto& grouped_val_rowid = grouped_val_rowids[i];
       const auto storage_type = grouped_val_rowid[0].first->storage_type();
       CHECK_EQ(storage_type, kRowSparseStorage)
                << "expected kRowSparseStorage, but got " << storage_type;
-      if (recv_buf.is_none()) {
+      bool broadcast = true;
+      if (grouped_val_rowids[i].size() == 1/* && grouped_vals[i][0].ctx() == */) {
+        recv_buf = grouped_val_rowids[i][0].first;
+        broadcast = false;
+      } else if (recv_buf->is_none()) {
         // it may happen for the first time a no-rank-0 worker pull the weight.
-        recv_buf = NDArray(storage_type, grouped_val_rowid[0].first->shape(),
+        *recv_buf = NDArray(storage_type, grouped_val_rowid[0].first->shape(),
                            pinned_ctx_, true, grouped_val_rowid[0].first->dtype());
       }
       auto &target_val_rowids = grouped_val_rowids[i];
       const size_t num_vals = target_val_rowids.size();
-      for (size_t i = 0; i < num_vals; i++) {
-        auto &row_id = target_val_rowids[i].second;
-        target_val_rowids[i].second = Unique(row_id, pinned_ctx_, 0);
-      }
+      //for (size_t i = 0; i < num_vals; i++) {
+      //  auto &row_id = target_val_rowids[i].second;
+      //  target_val_rowids[i].second = Unique(row_id, pinned_ctx_, 0);
+      //}
       CHECK_EQ(num_vals, 1) << "RowSparsePull with multiple values is not supported yet";
       NDArray& indices = target_val_rowids[0].second;
-      PullRowSparse_(key, recv_buf, indices, priority);
+      PullRowSparse_(key, *recv_buf, indices, priority);
       // The recv_buf contains values pulled from remote server with unique indices.
       // Directly broadcast w/o rowids if num_vals == 1
       auto get_val = [](const std::pair<NDArray*, NDArray>& p) { return p.first; };
       std::vector<NDArray*> grouped_val(grouped_val_rowid.size());
       std::transform(grouped_val_rowid.begin(), grouped_val_rowid.end(),
                      grouped_val.begin(), get_val);
-      comm_->Broadcast(key, recv_buf, grouped_val, priority);
+      if (broadcast)
+        comm_->Broadcast(key, *recv_buf, grouped_val, priority);
     }
   }
 
