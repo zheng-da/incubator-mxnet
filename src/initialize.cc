@@ -64,7 +64,7 @@ class LibraryInitializer {
         // Conservative thread management for multiprocess workers
         const size_t mp_worker_threads = dmlc::GetEnv("MXNET_MP_WORKER_NTHREADS", 1);
         dmlc::SetEnv("MXNET_CPU_WORKER_NTHREADS", mp_worker_threads);
-        dmlc::SetEnv("OMP_NUM_THREADS", 1);
+        dmlc::SetEnv("OMP_NUM_THREADS", 16);
 #if MXNET_USE_OPENCV && !__APPLE__
         const size_t mp_cv_num_threads = dmlc::GetEnv("MXNET_MP_OPENCV_NUM_THREADS", 0);
         cv::setNumThreads(mp_cv_num_threads);  // disable opencv threading
